@@ -1,0 +1,1 @@
+cmd_/home/corvoattano3000/Documents/hw1/part3/sysfs_module/sysfs_module.ko := ld -r -m elf_i386 -T /usr/src/linux-3.14.62-dev/scripts/module-common.lds --build-id  -o /home/corvoattano3000/Documents/hw1/part3/sysfs_module/sysfs_module.ko /home/corvoattano3000/Documents/hw1/part3/sysfs_module/sysfs_module.o /home/corvoattano3000/Documents/hw1/part3/sysfs_module/sysfs_module.mod.o
