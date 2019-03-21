@@ -557,9 +557,12 @@ static void killtask(struct task_struct **p)
 		j->thread_info->parent->children--;
 	
 	/* Free data structures */
-	free(j->thread_info->processName);
-	free(j->thread_info);
-	free(j);
+	
+	if (j != init) {
+		free(j->thread_info->processName);
+		free(j->thread_info);
+		free(j);
+	}
 	
 	/* Set the idle task in place
 	 * of the current one so the

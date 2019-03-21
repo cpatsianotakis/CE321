@@ -110,11 +110,12 @@ void schedule()
 	printf( ANSI_COLOR_CYAN "==========================================================================\n");
 	printf("Currently in CPU: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );
 	
-	if (rq->nr_running == 1  ) {
+	if (rq->nr_running == 1 ) {
 
 		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
-		context_switch(rq->head);
 	
+		context_switch(rq->head);	
+		
 	}
 	else if ( rq->nr_running == 2 ) {
 
@@ -125,7 +126,6 @@ void schedule()
 		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 		
 		context_switch(rq->head->next);
-
 
 	}
 	else {
@@ -161,12 +161,8 @@ void schedule()
 			printf( ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN" IS GOING TO LEAVE CPU\n", current->thread_info->processName );
 
 
-
-			// if (current->thread_info->id != 1)
-			// {
-
-			// 	printf("Restore time_slice to 5 for process: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );		
-			// }
+			current->time_slice = 100;
+		
 			
 			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
@@ -187,7 +183,7 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = 5;
+	p->time_slice = 100;
 
 /* ------ Here goes our code ---------------- */
 
@@ -215,7 +211,7 @@ void scheduler_tick(struct task_struct *p)
 	p->time_slice--;
 	if ( p->time_slice <= 0 )
 	{
-		p->time_slice = 5;
+		p->time_slice = 100;
 		schedule();
 	}
 	//schedule();
@@ -347,9 +343,10 @@ struct task_struct *calculate_goodness ( struct runqueue *rq )
 
 	for ( p = rq->head->next; p != rq->head; p = p->next )
 	{
+		printf(ANSI_COLOR_RESET"p exp burst = %u\nmin exp burst = %u\nmax waiting in rq = %llu\np waiting time in rq = %llu\n",p->exp_burst, minExpBurst_process->exp_burst, find_maxWaitingInRQ(rq), current_time - p->last_time_in_runqueue    );
 		goodness = ((1 + p->exp_burst) / (1 + minExpBurst_process->exp_burst )) * ((1 + find_maxWaitingInRQ(rq)) / (1 + (current_time - p->last_time_in_runqueue)));
 
-		printf(ANSI_COLOR_GREEN "%s"ANSI_COLOR_CYAN", %llums\n", p->thread_info->processName, goodness / 1000000);
+		printf(ANSI_COLOR_GREEN "%s"ANSI_COLOR_CYAN", %llu\n", p->thread_info->processName, goodness );
 
 
 		if ( goodness < min_goodness )
@@ -359,7 +356,7 @@ struct task_struct *calculate_goodness ( struct runqueue *rq )
 		}
 	}
 
-	printf(ANSI_COLOR_MAGENTA"==> Chosen goodness is %llums\n"ANSI_COLOR_CYAN"", min_goodness / 1000000);	
+	printf(ANSI_COLOR_MAGENTA"==> Chosen goodness is %llu\n"ANSI_COLOR_CYAN"", min_goodness );	
 
 	return (minGoodness_process);
 }

@@ -158,13 +158,7 @@ void schedule()
 
 			printf( ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN" IS GOING TO LEAVE CPU\n", current->thread_info->processName );
 
-
-
-			// if (current->thread_info->id != 1)
-			// {
-
-			// 	printf("Restore time_slice to 5 for process: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );		
-			// }
+			current->time_slice = 100;
 			
 			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
@@ -185,7 +179,7 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = 5;
+	p->time_slice = 100;
 
 /* ------ Here goes our code ---------------- */
 
@@ -213,7 +207,7 @@ void scheduler_tick(struct task_struct *p)
 	p->time_slice--;
 	if ( p->time_slice <= 0 )
 	{
-		p->time_slice = 5;
+		p->time_slice = 100;
 		schedule();
 	}
 	//schedule();

@@ -188,9 +188,8 @@ static void runcpu()
 		 */
 		clocktick++;
 	END_CYCLE:
-	
 		/* Check for ending conditions for our simulation */
-		if(!init->thread_info->kill && TICKS_TO_MS(clocktick) >= endtime)
+		if(!init->thread_info->kill &&  TICKS_TO_MS(clocktick) >= endtime)
 		{
 			ALERT("Sending Kill Message");
 			//isEnding = 1;
@@ -223,7 +222,7 @@ static int cycle()
 	if(taskEnd())
 		return(0);
 
-//	printf("CYCLE %s %llu\n", current->thread_info->processName, clocktick);
+	//printf("CYCLE %s %llu\n", current->thread_info->processName, clocktick);
 	/* Run logic based on task type */
 	switch(current->thread_info->thread_type)
 	{
@@ -283,6 +282,7 @@ static int cycle()
 		break;
 	}
 	
+	//printf("aek\n");
 	/* If no other task has slept on IO, 
 	 * set a random time for the next "IO"
 	 * event.
@@ -557,10 +557,11 @@ static void killtask(struct task_struct **p)
 		j->thread_info->parent->children--;
 	
 	/* Free data structures */
-	free(j->thread_info->processName);
-	free(j->thread_info);
-	free(j);
-	
+	if (j != init) {
+		free(j->thread_info->processName);
+		free(j->thread_info);
+		free(j);
+	}
 	/* Set the idle task in place
 	 * of the current one so the
 	 * scheduler works correctly.
