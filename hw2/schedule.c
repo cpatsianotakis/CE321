@@ -11,6 +11,12 @@
 #include "list.h"
 #include "privatestructs.h"
 
+#define ANSI_COLOR_GREEN     "\x1b[32m"
+#define ANSI_COLOR_CYAN      "\x1b[36m"
+#define ANSI_COLOR_RESET     "\x1b[0m"
+#define ANSI_COLOR_MAGENTA   "\x1b[35m"
+#define ANSI_COLOR_RED       "\x1b[31m"
+
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 
@@ -91,6 +97,7 @@ void schedule()
 {
 	struct task_struct *chosen;
 	unsigned int saved_exp_burst;
+	unsigned int saved_burst;
 	
 	printf("\nIn schedule\n");
 	print_rq();
@@ -100,12 +107,12 @@ void schedule()
 								   * had requested so by setting this flag   */
 
 
-	printf("--------------------------------------------------------------------------\n");
-	printf("Currently in CPU: %s\n",current->thread_info->processName );
+	printf( ANSI_COLOR_CYAN "==========================================================================\n");
+	printf("Currently in CPU: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );
 	
 	if (rq->nr_running == 1  ) {
 
-		printf("--------------------------------------------------------------------------\n");
+		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 		context_switch(rq->head);
 	
 	}
@@ -113,44 +120,57 @@ void schedule()
 
 		rq->head->next->cpu_owned = sched_clock();
 	
-		printf("--------------------------------------------------------------------------\n");
+		printf("%s IS GOING TO LEAVE CPU\n", current->thread_info->processName );
+		printf("==> CHOSEN IS [" ANSI_COLOR_RED "%s " ANSI_COLOR_CYAN "]\n", rq->head->next->thread_info->processName );
+		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
+		
 		context_switch(rq->head->next);
+
 
 	}
 	else {
 
-		printf("Current: Saved Exp Burst = %d\n", current->exp_burst );
+		printf("Current: Saved Exp Burst = %dms\n", current->exp_burst / 1000000 );
 
 		saved_exp_burst = current->exp_burst;
+		saved_burst = current->burst;
+		current->burst = sched_clock() - current->cpu_owned;
 
 		calculate_expBurst ( current );
 
-		printf("Current: Temp Exp Burst = %d\n", current->exp_burst );
+		printf("Current: Temp Exp Burst = %dms, Temp Burst = %dms\n", current->exp_burst / 1000000, current->burst / 1000000 );
 
 		chosen = find_minExpBurst( rq ); 
 		
-		printf("==> CHOSEN IS [%s], CHOSEN EXP_BURST IS [%u] <==\n", chosen->thread_info->processName, chosen->exp_burst);
+		printf("==> CHOSEN IS ["ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN"], CHOSEN EXP_BURST IS [%ums] <==\n", chosen->thread_info->processName, chosen->exp_burst / 1000000);
 
 		if ( current == chosen ) {
 			
+			current->burst = saved_burst;
 			current->exp_burst = saved_exp_burst;
 
-			printf("--------------------------------------------------------------------------\n");
+			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
 			context_switch(current);
 		}
 
 		else {
 
-			current->burst = sched_clock() - current->cpu_owned;
-			calculate_expBurst ( current );
+			printf( ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN" IS GOING TO LEAVE CPU\n", current->thread_info->processName );
 
-			printf("%s IS GOING TO LEAVE CPU\n", current->thread_info->processName );
-			printf("Calculating new burst == %d and exp_burst %d for %s \n", current->burst, current->exp_burst, current->thread_info->processName);
-			printf("--------------------------------------------------------------------------\n");
+
+
+			// if (current->thread_info->id != 1)
+			// {
+
+			// 	printf("Restore time_slice to 5 for process: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );		
+			// }
+			
+			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
 			chosen->cpu_owned = sched_clock();
 			context_switch(chosen);
+
 		}
 
 		
@@ -264,7 +284,7 @@ struct task_struct *find_minExpBurst( struct runqueue *rq )
 
 	for ( temp = rq->head->next; temp != rq->head; temp = temp->next )
 	{
-		printf("%s, %d\n", temp->thread_info->processName, temp->exp_burst);
+		printf(ANSI_COLOR_GREEN"%s"ANSI_COLOR_CYAN", %dms\n", temp->thread_info->processName, temp->exp_burst / 1000000);
 		
 		if ( temp->exp_burst < minimum_exp_burst )
 		{
