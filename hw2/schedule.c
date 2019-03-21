@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "list.h"
+#include "privatestructs.h"
+
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 
@@ -55,6 +57,9 @@ void initschedule(struct runqueue *newrq, struct task_struct *seedTask)
  * This function should free any memory that 
  * was allocated when setting up the runqueu.
  * It SHOULD NOT free the runqueue itself.
+
+
+
  */
 void killschedule()
 {
@@ -84,28 +89,74 @@ void print_rq () {
  */
 void schedule()
 {
-	static struct task_struct *nxt = NULL;
-	struct task_struct *curr;
+	struct task_struct *chosen;
+	unsigned int saved_exp_burst;
 	
-//	printf("In schedule\n");
-//	print_rq();
+	printf("\nIn schedule\n");
+	print_rq();
 	
 	current->need_reschedule = 0; /* Always make sure to reset that, in case *
 								   * we entered the scheduler because current*
 								   * had requested so by setting this flag   */
+
+
+	printf("--------------------------------------------------------------------------\n");
+	printf("Currently in CPU: %s\n",current->thread_info->processName );
 	
-	if (rq->nr_running == 1) {
+	if (rq->nr_running == 1  ) {
+
+		printf("--------------------------------------------------------------------------\n");
 		context_switch(rq->head);
-		nxt = rq->head->next;
+	
 	}
-	else {	
-		curr = nxt;
-		nxt = nxt->next;
-		if (nxt == rq->head)    /* Do this to always skip init at the head */
-			nxt = nxt->next;	/* of the queue, whenever there are other  */
-								/* processes available					   */
-		context_switch(curr);
+	else if ( rq->nr_running == 2 ) {
+
+		rq->head->next->cpu_owned = sched_clock();
+	
+		printf("--------------------------------------------------------------------------\n");
+		context_switch(rq->head->next);
+
 	}
+	else {
+
+		printf("Current: Saved Exp Burst = %d\n", current->exp_burst );
+
+		saved_exp_burst = current->exp_burst;
+
+		calculate_expBurst ( current );
+
+		printf("Current: Temp Exp Burst = %d\n", current->exp_burst );
+
+		chosen = find_minExpBurst( rq ); 
+		
+		printf("==> CHOSEN IS [%s], CHOSEN EXP_BURST IS [%u] <==\n", chosen->thread_info->processName, chosen->exp_burst);
+
+		if ( current == chosen ) {
+			
+			current->exp_burst = saved_exp_burst;
+
+			printf("--------------------------------------------------------------------------\n");
+
+			context_switch(current);
+		}
+
+		else {
+
+			current->burst = sched_clock() - current->cpu_owned;
+			calculate_expBurst ( current );
+
+			printf("%s IS GOING TO LEAVE CPU\n", current->thread_info->processName );
+			printf("Calculating new burst == %d and exp_burst %d for %s \n", current->burst, current->exp_burst, current->thread_info->processName);
+			printf("--------------------------------------------------------------------------\n");
+
+			chosen->cpu_owned = sched_clock();
+			context_switch(chosen);
+		}
+
+		
+	}
+
+
 }
 
 
@@ -114,7 +165,16 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = 100;
+	p->time_slice = 5;
+
+/* ------ Here goes our code ---------------- */
+
+	p->burst = 0;
+	p->exp_burst = 0;
+	p->cpu_owned = 0;
+
+/* ---------End of our code ---------------- */
+
 }
 
 /* scheduler_tick
@@ -123,7 +183,21 @@ void sched_fork(struct task_struct *p)
  */
 void scheduler_tick(struct task_struct *p)
 {
-	schedule();
+	
+	if ( p == rq->head )
+	{
+		schedule();
+		return;
+	}
+
+	p->time_slice--;
+	if ( p->time_slice <= 0 )
+	{
+		p->time_slice = 5;
+		schedule();
+	}
+	//schedule();
+
 }
 
 /* wake_up_new_task
@@ -168,3 +242,65 @@ void deactivate_task(struct task_struct *p)
 
 	rq->nr_running--;
 }
+
+
+void calculate_expBurst ( struct task_struct *p ) 
+{
+
+	p->exp_burst =  ( p->burst + ( 0.5 * p->exp_burst ) ) / ( 1 + 0.5 ); 
+
+
+}
+struct task_struct *find_minExpBurst( struct runqueue *rq ) 
+{
+
+	unsigned long long minimum_exp_burst;
+	struct task_struct *temp, *min_task;
+
+	minimum_exp_burst = rq->head->next->exp_burst;
+	min_task = rq->head->next;
+
+	printf("Exp.Bursts...\n" );
+
+	for ( temp = rq->head->next; temp != rq->head; temp = temp->next )
+	{
+		printf("%s, %d\n", temp->thread_info->processName, temp->exp_burst);
+		
+		if ( temp->exp_burst < minimum_exp_burst )
+		{
+			minimum_exp_burst = temp->exp_burst;
+			min_task = temp;
+		}
+	}
+
+	return ( min_task );
+}
+
+// unsigned long long find_maxWaitingInRQ( struct runqueue *rq ) 
+// {
+
+// 	unsigned long long max_waiting;
+// 	struct task_struct temp;
+
+// 	max_waiting = rq->head->last_in_runqueue;
+
+// 	for ( temp = rq->head->next; temp != NULL; temp = temp->next )
+// 	{
+// 		if ( temp->last_in_runqueue < max_waiting )
+// 		{
+// 			max_waiting = temp->last_in_runqueue;
+// 		}
+// 	}
+
+// 	return ( max_waiting );
+// }
+
+
+//Important!!!! Change the algorithm
+
+// unsigned long long calculate_goodness ( struct runqueue *rq , struct task_struct *p, unsigned long long current_time  ) 
+// {
+// 	return (((1 + p->exp_burst) / (1 + find_minExpBurst(rq))) * ((1 + find_maxWaitingInRQ(rq)) / (1 + (current_time - p->last_in_runqueue))));
+// }
+
+

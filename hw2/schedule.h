@@ -29,6 +29,18 @@ struct task_struct
 										   NULL when the process is not in the
 										   runqueue */
 /* ---------------- Do NOT Touch END-------------- */
+
+/* ------ Here goes our code ---------------- */
+
+	unsigned int burst;
+	unsigned int exp_burst;
+	unsigned long long cpu_owned;
+	unsigned long long last_time_in_runqueue;
+
+/* ---------End of our code ---------------- */
+
+
+
 };
 
 /* runqueue */
@@ -56,5 +68,17 @@ void deactivate_task(struct task_struct *p);
 void scheduler_tick(struct task_struct *p);
 void sched_fork(struct task_struct *p);
 void wake_up_new_task(struct task_struct *p);
+
+/* ------ Here goes our code ---------------- */
+
+struct task_struct *find_minExpBurst( struct runqueue *rq );
+unsigned long long find_maxWaitingInRQ ( struct runqueue *rq );
+unsigned long long calculate_goodness ( struct runqueue *rq , struct task_struct *p, unsigned long long current_time  );
+void calculate_expBurst ( struct task_struct *p );
+
+
+
+/* ---------End of our code ---------------- */
+
 
 #endif
