@@ -20,7 +20,7 @@
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 
-#define TIMESLICE 5
+#define TIMESLICE 50
 
 /* Local Globals
  * rq - This is a pointer to the runqueue that the scheduler uses.
