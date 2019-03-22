@@ -1,0 +1,10 @@
+[Task , Execution Time , Total Procces Time , Waiting Time]
+[(CCC-Int:3) , 60 , 510 , 450]
+[(EEE-Non-Int:5) , 1310 , 9920 , 8610]
+[(DDD-Int:6) , 1040 , 9740 , 8700]
+[(AAA:7) , 1220 , 9680 , 8460]
+[(BBB:1):(B++Int:4) , 1170 , 10040 , 8870]
+[(BBB:1):(B++Non-Int:2) , 3120 , 10440 , 7320]
+[(BBB:1) , 2520 , 10540 , 8020]
+
+MXD 8695

@@ -1,0 +1,8 @@
+[Task , Execution Time , Total Procces Time , Waiting Time]
+[(EEE:5) , 450 , 2090 , 1640]
+[(DDD:4) , 450 , 2140 , 1690]
+[(FFF:6) , 500 , 2300 , 1800]
+[(CCC:3) , 500 , 3290 , 2790]
+[(AAA:1) , 600 , 3490 , 2890]
+[(BBB:2) , 890 , 3490 , 2600]
+MXD 2800

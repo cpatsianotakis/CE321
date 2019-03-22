@@ -1,0 +1,8 @@
+[Task , Execution Time , Total Procces Time , Waiting Time]
+[(CCC:3) , 460 , 1220 , 760]
+[(FFF:6) , 450 , 2000 , 1550]
+[(EEE:5) , 500 , 2010 , 1510]
+[(DDD:4) , 480 , 2270 , 1790]
+[(BBB:2) , 780 , 3490 , 2710]
+[(AAA:1) , 710 , 3490 , 2780]
+MXD 2413

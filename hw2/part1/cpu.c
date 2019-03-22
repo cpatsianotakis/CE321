@@ -122,10 +122,9 @@ int main(int argc, char *argv[])
 		return(1);
 	}
 	
-	if ( argc != 3 )
-		return 1;
+	fp = fopen("TimingResults1.txt", "w+");
+	fprintf(fp,"[Task , Execution Time , Total Procces Time , Waiting Time]\n");
 	
-	fp = fopen(argv[2], "w+");
 	/* Initialize CPU and scheduler */
 	__init_sched();
 
@@ -561,7 +560,8 @@ static void killtask(struct task_struct **p)
 	printf("###-Process: %s is going down-###, time is %lldms *********************************************\n", j->thread_info->processName, current_time / 1000000); 
 	j->XD = current_time - j->XD;
 	j->XA = j->XD - j->XE;
-	fprintf(fp,"[%s , %llu , %llu , %llu]\n",j->thread_info->processName,j->XE/1000000,j->XD/1000000,j->XA/1000000);
+	if(j != init)
+		fprintf(fp,"[%s , %llu , %llu , %llu]\n",j->thread_info->processName,j->XE/1000000,j->XD/1000000,j->XA/1000000);
 	/* If task has a parent, decrement the parent's
 	 * count of running children.
 	 */
