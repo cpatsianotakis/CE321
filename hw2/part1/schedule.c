@@ -20,7 +20,7 @@
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 
-#define TIMESLICE 100
+#define TIMESLICE 5
 
 /* Local Globals
  * rq - This is a pointer to the runqueue that the scheduler uses.
@@ -81,10 +81,10 @@ void print_rq () {
 	printf("Rq: \n");
 	curr = rq->head;
 	if (curr)
-		printf("%p", curr);
+		printf("%s", curr->thread_info->processName);
 	while(curr->next != rq->head) {
 		curr = curr->next;
-		printf(", %p", curr);
+		printf(", %s", curr->thread_info->processName);
 	};
 	printf("\n");
 }
@@ -110,10 +110,11 @@ void schedule()
 
 
 	printf( ANSI_COLOR_CYAN "==========================================================================\n");
-	printf("Currently in CPU: "ANSI_COLOR_RED" %s\n"ANSI_COLOR_CYAN ,current->thread_info->processName );
+	
 	
 	if (rq->nr_running == 1  ) {
-
+		printf("Switch: "ANSI_COLOR_RED" %s "ANSI_COLOR_CYAN ,current->thread_info->processName );
+		printf("==========>[" ANSI_COLOR_RED "%s " ANSI_COLOR_CYAN "]\n", rq->head->thread_info->processName );
 		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 		context_switch(rq->head);
 	
@@ -121,9 +122,9 @@ void schedule()
 	else if ( rq->nr_running == 2 ) {
 
 		rq->head->next->cpu_owned = sched_clock();
-	
-		printf("%s IS GOING TO LEAVE CPU\n", current->thread_info->processName );
-		printf("==> CHOSEN IS [" ANSI_COLOR_RED "%s " ANSI_COLOR_CYAN "]\n", rq->head->next->thread_info->processName );
+		printf("Switch: "ANSI_COLOR_RED" %s "ANSI_COLOR_CYAN ,current->thread_info->processName );
+		//printf("%s IS GOING TO LEAVE CPU\n", current->thread_info->processName );
+		printf("==========>[" ANSI_COLOR_RED "%s " ANSI_COLOR_CYAN "]\n", rq->head->next->thread_info->processName );
 		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 		
 		context_switch(rq->head->next);
@@ -144,25 +145,24 @@ void schedule()
 
 		chosen = find_minExpBurst( rq ); 
 		
-		printf("==> CHOSEN IS ["ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN"], CHOSEN EXP_BURST IS [%ums] <==\n", chosen->thread_info->processName, chosen->exp_burst / 1000000);
+		
+		printf("Switch:"ANSI_COLOR_RED" %s"ANSI_COLOR_CYAN" ", current->thread_info->processName );
+		printf("==========>["ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN"], CHOSEN EXP_BURST IS [%ums] <==\n", chosen->thread_info->processName, chosen->exp_burst / 1000000);
+		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
 		if ( current == chosen ) {
 			
 			current->burst = saved_burst;
 			current->exp_burst = saved_exp_burst;
 
-			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
 			context_switch(current);
 		}
 
 		else {
-
-			printf( ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN" IS GOING TO LEAVE CPU\n", current->thread_info->processName );
-
 			current->time_slice = TIMESLICE;
 			
-			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
+			
 
 			chosen->cpu_owned = sched_clock();
 			context_switch(chosen);
