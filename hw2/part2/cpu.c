@@ -88,6 +88,8 @@ long long intTimer = -1;
 long long intWaitTimer = -1;
 long endtime = 1;
  
+//our globals---------------------------------------------------------------------------
+FILE *fp;
 /*-------------- INTERRUPT DATA ---------------*/
 /* This section has data specific to our
  * machine "interrupts."
@@ -119,7 +121,11 @@ int main(int argc, char *argv[])
 		printf("Virtual Scheduler\nUsage: vsch [filename]\n");
 		return(1);
 	}
-
+	
+	if ( argc != 3 )
+		return 1;
+	
+	fp = fopen(argv[2], "w+");
 	/* Initialize CPU and scheduler */
 	__init_sched();
 
@@ -148,6 +154,8 @@ ERROR:
 	/* Cleanup from an error */
 	badshutdowncpu();
 	shutdowncpu();
+	
+	fclose(fp);
 	return(1);
 }
 
@@ -547,9 +555,13 @@ static void spawnChildren(struct task_struct *parent)
 static void killtask(struct task_struct **p)
 {
 	struct task_struct *j = *p;
+	
+	unsigned long long current_time = sched_clock();
 
-	printf("###-Process: %s is going down-###, time is %lldms *********************************************\n", j->thread_info->processName, sched_clock() / 1000000); 
-
+	printf("###-Process: %s is going down-###, time is %lldms *********************************************\n", j->thread_info->processName, current_time / 1000000); 
+	j->XD = current_time - j->XD;
+	j->XA = j->XD - j->XE;
+	fprintf(fp,"[%s , %llu , %llu , %llu]\n",j->thread_info->processName,j->XE/1000000,j->XD/1000000,j->XA/1000000);
 	/* If task has a parent, decrement the parent's
 	 * count of running children.
 	 */

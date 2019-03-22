@@ -36,6 +36,10 @@ struct task_struct
 	unsigned int exp_burst;
 	unsigned long long cpu_owned;
 	unsigned long long last_time_in_runqueue;
+	
+	unsigned long long XE;
+	unsigned long long XD;
+	unsigned long long XA;
 
 /* ---------End of our code ---------------- */
 
@@ -73,7 +77,7 @@ void wake_up_new_task(struct task_struct *p);
 
 struct task_struct *find_minExpBurst( struct runqueue *rq );
 unsigned long long find_maxWaitingInRQ ( struct runqueue *rq );
-unsigned long long calculate_goodness ( struct runqueue *rq , struct task_struct *p, unsigned long long current_time  );
+struct task_struct *calculate_goodness ( struct runqueue *rq  );
 void calculate_expBurst ( struct task_struct *p );
 
 

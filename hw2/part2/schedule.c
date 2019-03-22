@@ -152,17 +152,14 @@ void schedule()
 		printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
 		if ( current == chosen ) {
-			
 			current->burst = saved_burst;
 			current->exp_burst = saved_exp_burst;
-
 			context_switch(current);
 		}
 
 		else {
-
+			current->XE += current->burst;
 			current->time_slice = TIMESLICE;
-		
 			chosen->cpu_owned = sched_clock();
 			context_switch(chosen);
 
@@ -187,6 +184,9 @@ void sched_fork(struct task_struct *p)
 	p->burst = 0;
 	p->exp_burst = 0;
 	p->cpu_owned = 0;
+	p->XE = 0;
+	p->XD = sched_clock();
+	p->XA = 0;
 
 /* ---------End of our code ---------------- */
 

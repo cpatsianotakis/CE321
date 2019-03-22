@@ -36,6 +36,10 @@ struct task_struct
 	unsigned int exp_burst;
 	unsigned long long cpu_owned;
 	unsigned long long last_time_in_runqueue;
+	
+	unsigned long long XE;
+	unsigned long long XD;
+	unsigned long long XA;
 
 /* ---------End of our code ---------------- */
 
