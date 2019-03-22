@@ -188,8 +188,9 @@ static void runcpu()
 		 */
 		clocktick++;
 	END_CYCLE:
+	
 		/* Check for ending conditions for our simulation */
-		if(!init->thread_info->kill &&  TICKS_TO_MS(clocktick) >= endtime)
+		if(!init->thread_info->kill && TICKS_TO_MS(clocktick) >= endtime)
 		{
 			ALERT("Sending Kill Message");
 			//isEnding = 1;
@@ -222,7 +223,7 @@ static int cycle()
 	if(taskEnd())
 		return(0);
 
-	//printf("CYCLE %s %llu\n", current->thread_info->processName, clocktick);
+//	printf("CYCLE %s %llu\n", current->thread_info->processName, clocktick);
 	/* Run logic based on task type */
 	switch(current->thread_info->thread_type)
 	{
@@ -282,7 +283,6 @@ static int cycle()
 		break;
 	}
 	
-	//printf("aek\n");
 	/* If no other task has slept on IO, 
 	 * set a random time for the next "IO"
 	 * event.
@@ -364,7 +364,7 @@ static int interrupt()
  */
 void context_switch(struct task_struct *next)
 {
-	LEVEL1(next, "Switching Process In");
+	LEVEL1(next, "Switching Process In\n");
 	
 	if(TICKS_TO_MS(clocktick) == 8790)
 		printf("BREAK\n");
@@ -469,7 +469,7 @@ static void forktask(struct thread_info *thread, struct task_struct *parent)
 //	task->static_prio = NICE_TO_PRIO(task->thread_info->niceValue);
 	
 	/* Alert Creation */
-	printf("###-Process: %s has been created-###\n", thread->processName);
+	printf("###-Process: %s has been created-###, time is %lldms *********************************************\n", thread->processName, sched_clock() / 1000000);
 	/* Fork process in Scheduler */
 	sched_fork(task);
 	/* Wake up the task */
@@ -548,7 +548,7 @@ static void killtask(struct task_struct **p)
 {
 	struct task_struct *j = *p;
 
-	printf("###-Process: %s is going down-###\n", j->thread_info->processName); 
+	printf("###-Process: %s is going down-###, time is %lldms *********************************************\n", j->thread_info->processName, sched_clock() / 1000000); 
 
 	/* If task has a parent, decrement the parent's
 	 * count of running children.
@@ -557,11 +557,13 @@ static void killtask(struct task_struct **p)
 		j->thread_info->parent->children--;
 	
 	/* Free data structures */
+	
 	if (j != init) {
 		free(j->thread_info->processName);
 		free(j->thread_info);
 		free(j);
 	}
+	
 	/* Set the idle task in place
 	 * of the current one so the
 	 * scheduler works correctly.

@@ -364,7 +364,7 @@ static int interrupt()
  */
 void context_switch(struct task_struct *next)
 {
-	LEVEL1(next, "Switching Process In");
+	LEVEL1(next, "Switching Process In\n");
 	
 	if(TICKS_TO_MS(clocktick) == 8790)
 		printf("BREAK\n");
@@ -469,7 +469,7 @@ static void forktask(struct thread_info *thread, struct task_struct *parent)
 //	task->static_prio = NICE_TO_PRIO(task->thread_info->niceValue);
 	
 	/* Alert Creation */
-	printf("###-Process: %s has been created-###\n", thread->processName);
+	printf("###-Process: %s has been created-###, time is %lldms *********************************************\n", thread->processName, sched_clock() / 1000000);
 	/* Fork process in Scheduler */
 	sched_fork(task);
 	/* Wake up the task */
@@ -548,7 +548,7 @@ static void killtask(struct task_struct **p)
 {
 	struct task_struct *j = *p;
 
-	printf("###-Process: %s is going down-###\n", j->thread_info->processName); 
+	printf("###-Process: %s is going down-###, time is %lldms *********************************************\n", j->thread_info->processName, sched_clock() / 1000000); 
 
 	/* If task has a parent, decrement the parent's
 	 * count of running children.

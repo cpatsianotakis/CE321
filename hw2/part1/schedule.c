@@ -20,6 +20,8 @@
 
 #define NEWTASKSLICE (NS_TO_JIFFIES(100000000))
 
+#define TIMESLICE 100
+
 /* Local Globals
  * rq - This is a pointer to the runqueue that the scheduler uses.
  * current - A pointer to the current running task.
@@ -99,7 +101,7 @@ void schedule()
 	unsigned int saved_exp_burst;
 	unsigned int saved_burst;
 	
-	printf("\nIn schedule\n");
+	printf("In schedule\n");
 	print_rq();
 	
 	current->need_reschedule = 0; /* Always make sure to reset that, in case *
@@ -158,7 +160,7 @@ void schedule()
 
 			printf( ANSI_COLOR_RED"%s"ANSI_COLOR_CYAN" IS GOING TO LEAVE CPU\n", current->thread_info->processName );
 
-			current->time_slice = 100;
+			current->time_slice = TIMESLICE;
 			
 			printf("--------------------------------------------------------------------------\n"ANSI_COLOR_RESET);
 
@@ -179,7 +181,7 @@ void schedule()
  */
 void sched_fork(struct task_struct *p)
 {
-	p->time_slice = 100;
+	p->time_slice = TIMESLICE;
 
 /* ------ Here goes our code ---------------- */
 
@@ -198,19 +200,22 @@ void sched_fork(struct task_struct *p)
 void scheduler_tick(struct task_struct *p)
 {
 	
-	if ( p == rq->head )
+	if (p == rq->head && rq->nr_running > 1)
 	{
 		schedule();
-		return;
+	}
+	else if ( p != rq->head )
+	{
+		p->time_slice--;
+
+		if ( p->time_slice <= 0 )
+		{
+			p->time_slice = TIMESLICE;
+			printf( ANSI_COLOR_RED"Time Slice has expired!!!"ANSI_COLOR_RESET"\n" );
+			schedule();
+		}
 	}
 
-	p->time_slice--;
-	if ( p->time_slice <= 0 )
-	{
-		p->time_slice = 100;
-		schedule();
-	}
-	//schedule();
 
 }
 
@@ -289,32 +294,3 @@ struct task_struct *find_minExpBurst( struct runqueue *rq )
 
 	return ( min_task );
 }
-
-// unsigned long long find_maxWaitingInRQ( struct runqueue *rq ) 
-// {
-
-// 	unsigned long long max_waiting;
-// 	struct task_struct temp;
-
-// 	max_waiting = rq->head->last_in_runqueue;
-
-// 	for ( temp = rq->head->next; temp != NULL; temp = temp->next )
-// 	{
-// 		if ( temp->last_in_runqueue < max_waiting )
-// 		{
-// 			max_waiting = temp->last_in_runqueue;
-// 		}
-// 	}
-
-// 	return ( max_waiting );
-// }
-
-
-//Important!!!! Change the algorithm
-
-// unsigned long long calculate_goodness ( struct runqueue *rq , struct task_struct *p, unsigned long long current_time  ) 
-// {
-// 	return (((1 + p->exp_burst) / (1 + find_minExpBurst(rq))) * ((1 + find_maxWaitingInRQ(rq)) / (1 + (current_time - p->last_in_runqueue))));
-// }
-
-
