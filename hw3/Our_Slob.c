@@ -267,6 +267,31 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 /*
  * slob_alloc: entry point into the slob allocator.
  */
+
+int check_block_avail( struct page *sp, size_t size, int align )
+{
+	slob_t *prev, *cur, *aligned = NULL;
+	int delta = 0, units = SLOB_UNITS(size);
+
+	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
+		slobidx_t avail = slob_units(cur);
+
+		if (align) {
+			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
+			delta = aligned - cur;
+		}
+
+		if (avail >= units + delta)
+			return 1;
+
+		if (slob_last(cur))
+			return 0;
+	}
+
+	return 0;
+
+}
+
 static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 {
 
@@ -339,8 +364,7 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 		if (sp->units < SLOB_UNITS(size))
 			continue;
 
-		b = slob_page_alloc(sp, size, align);
-		if (!b)
+		if ( !check_block_avail(sp, size, align) )
 			continue;
 
 		if ( sp->units < best_pg->units )
