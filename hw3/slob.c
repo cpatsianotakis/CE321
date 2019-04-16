@@ -73,6 +73,8 @@
 #include <linux/atomic.h>
 
 #include "slab.h"
+
+#define BEST_FIT_ALLOCATOR
 /*
  * slob_block has a field 'units', which indicates size of block if +ve,
  * or offset of next block if -ve (in SLOB_UNITs).
@@ -262,11 +264,55 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 	}
 }
 
-/*
- * slob_alloc: entry point into the slob allocator.
- */
+
+int find_min_block( struct page *sp, size_t size, int align )
+{
+	slob_t *prev, *cur, *aligned = NULL;
+	int delta = 0, units = SLOB_UNITS(size);
+
+	slobidx_t min_space = 0;
+	slob_t *min_block;
+
+	for (prev = NULL, min_block = cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
+		slobidx_t avail = slob_units(cur);
+
+		if (align) {
+			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
+			delta = aligned - cur;
+		}
+
+		if (avail >= units + delta && ( avail - (units + delta) < min_space ) )
+		{
+			min_space = avail - units + delta;
+			min_block = cur;
+			if ( min_space == 0 )
+				break;
+		}
+
+		if ( slob_last(cur) )
+		{
+			if ( min_block == NULL )
+				return -1;
+			else
+				break;
+		}
+
+	}
+
+	return min_space;
+}
+
+
+
 static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 {
+
+
+	struct page *best_pg = NULL;
+	int min_space = -1;
+	int cur_space;
+
+
 	struct page *sp;
 	struct list_head *prev;
 	struct list_head *slob_list;
@@ -281,6 +327,8 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 		slob_list = &free_slob_large;
 
 	spin_lock_irqsave(&slob_lock, flags);
+
+#ifdef DEFAULT_ALLOCATOR
 	/* Iterate through each partially free page, try to find room */
 	list_for_each_entry(sp, slob_list, list) {
 #ifdef CONFIG_NUMA
@@ -303,12 +351,56 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 		/* Improve fragment distribution and reduce our average
 		 * search time by starting our next search here. (see
-		 * Knuth vol 1, sec 2.5, pg 449) */
+		 * Knuth vol 1, sec 2.5, pg 449) 
+		 */
 		if (prev != slob_list->prev &&
 				slob_list->next != prev->next)
 			list_move_tail(slob_list, prev->next);
 		break;
 	}
+#endif
+
+#ifdef BEST_FIT_ALLOCATOR 
+
+	/* Iterate through each partially free page, try to find room */
+	list_for_each_entry(sp, slob_list, list) {
+#ifdef CONFIG_NUMA
+		/*
+		 * If there's a node specification, search for a partial
+		 * page with a matching node id in the freelist.
+		 */
+		if (node != NUMA_NO_NODE && page_to_nid(sp) != node)
+			continue;
+#endif
+		/* Enough room on this page? */
+		if (sp->units < SLOB_UNITS(size))
+			continue;
+
+		cur_space = find_min_block (sp, size, align);
+
+		if ( cur_space > 0 )
+		{
+			if ( cur_space < min_space || min_space == -1 )
+			{
+				min_space = cur_space;
+				best_pg = sp;
+			}
+
+		}
+
+		else if ( cur_space == 0 )
+		{
+			min_space = cur_space;
+			best_pg = sp;
+			break;
+		}
+	}
+
+	b = slob_page_alloc (best_pg, size, align);
+	
+#endif
+
+	
 	spin_unlock_irqrestore(&slob_lock, flags);
 
 	/* Not enough space: must allocate a new page */
