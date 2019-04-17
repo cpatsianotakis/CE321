@@ -310,7 +310,7 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 	struct page *best_pg = NULL;
 
-	struct page *sp;
+	struct page *sp, *in_sp;
 	struct list_head *prev;
 	struct list_head *slob_list;
 	struct list_head *black_list_head;
@@ -362,69 +362,47 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 #ifdef BEST_FIT_ALLOCATOR 
 	
-	black_list_head = slob_list;
-
-	while ( b == NULL ) 
-	{
-
-		/* Iterate through each partially free page, try to find room */
-		list_for_each_entry(sp, slob_list, list) {
-
+	/* Iterate through each partially free page, try to find room */
+	list_for_each_entry(sp, slob_list, list) {
 #ifdef CONFIG_NUMA
-			/*
-			 * If there's a node specification, search for a partial
-			 * page with a matching node id in the freelist.
-			 */
-			if (node != NUMA_NO_NODE && page_to_nid(sp) != node)
-				continue;
+		/*
+		 * If there's a node specification, search for a partial
+		 * page with a matching node id in the freelist.
+		 */
+		if (node != NUMA_NO_NODE && page_to_nid(sp) != node)
+			continue;
 #endif
+		/* Enough room on this page? */
+		if (sp->units < SLOB_UNITS(size))
+			continue;
 
-			// Find if got into black zone //
-			if (  (sp->list.prev)->next == black_list_head )
-			{
-				break;
-			}
-			// Find if black zone got all list //
-			if (  slob_list->next == black_list_head )
-			{
-				break;
-			}
+		/* Attempt to alloc */
 
+		for ( in_sp = sp; in_sp != black_list_head; in_sp = in_sp -> next )
+		{
 
 			/* Enough room on this page? */
-			if (sp->units < SLOB_UNITS(size)) 
+			if (in_sp->units < SLOB_UNITS(size))
 			{
-				list_move_tail((sp->list.prev)->next, black_list_head );
-				black_list_head = (sp->list.prev)->next;
+				list_move_tail ( (in_sp->list.prev)->next, sp);
 				continue;
 			}
-
-
-			if ( best_pg == NULL || sp->units < best_pg->units )
-				best_pg = sp;
-
-	
 		}
 
-		if (  slob_list->next == black_list_head )
-			break;
+		prev = sp->list.prev;
+		b = slob_page_alloc(sp, size, align);
+		if (!b)
+			continue;
 
-		if ( best_pg != NULL )
-			b = slob_page_alloc (best_pg, size, align);
-			
-		else 
-			break;
-		
-
-		if ( !b ) 
-		{
-			list_move_tail( (best_pg->list.prev)->next, black_list_head );
-			black_list_head = (best_pg->list.prev)->next;
-			best_pg = NULL;
-		}
-
+		/* Improve fragment distribution and reduce our average
+		 * search time by starting our next search here. (see
+		 * Knuth vol 1, sec 2.5, pg 449) 
+		 */
+		if (prev != slob_list->prev &&
+				slob_list->next != prev->next)
+			list_move_tail(slob_list, prev->next);
+		break;
 	}
-
 
 	
 	

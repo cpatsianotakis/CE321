@@ -310,7 +310,8 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 	struct page *best_pg = NULL;
 
-	struct page *sp;
+	struct page *sp, *in_sp;
+	struct list_head *temp;
 	struct list_head *prev;
 	struct list_head *slob_list;
 	struct list_head *black_list_head;
@@ -362,69 +363,64 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 #ifdef BEST_FIT_ALLOCATOR 
 	
-	black_list_head = slob_list;
-
-	while ( b == NULL ) 
-	{
-
-		/* Iterate through each partially free page, try to find room */
-		list_for_each_entry(sp, slob_list, list) {
-
+	/* Iterate through each partially free page, try to find room */
+	list_for_each_entry(sp, slob_list, list) {
 #ifdef CONFIG_NUMA
-			/*
-			 * If there's a node specification, search for a partial
-			 * page with a matching node id in the freelist.
-			 */
-			if (node != NUMA_NO_NODE && page_to_nid(sp) != node)
-				continue;
+		/*
+		 * If there's a node specification, search for a partial
+		 * page with a matching node id in the freelist.
+		 */
+		if (node != NUMA_NO_NODE && page_to_nid(sp) != node)
+			continue;
 #endif
+		/* Enough room on this page? */
+		if (sp->units < SLOB_UNITS(size))
+			continue;
 
-			// Find if got into black zone //
-			if (  (sp->list.prev)->next == black_list_head )
-			{
-				break;
-			}
-			// Find if black zone got all list //
-			if (  slob_list->next == black_list_head )
-			{
-				break;
-			}
+		/* Attempt to alloc */
 
+		best_pg = sp;
+
+		for ( in_sp = sp; (in_sp->list.prev)->next != black_list_head; in_sp = in_sp -> next )
+		{
 
 			/* Enough room on this page? */
-			if (sp->units < SLOB_UNITS(size)) 
+			if (in_sp->units < SLOB_UNITS(size))
 			{
-				list_move_tail((sp->list.prev)->next, black_list_head );
-				black_list_head = (sp->list.prev)->next;
+				temp = in_sp->list.prev;
+				list_move_tail ( (in_sp->list.prev)->next, (sp->list.prev)->next);
+				in_sp = __container_of(temp, in_sp, list);	
 				continue;
 			}
 
-
-			if ( best_pg == NULL || sp->units < best_pg->units )
-				best_pg = sp;
-
-	
+			if ( sp->units < best_pg->units )
+				best_pg = in_sp;
 		}
 
-		if (  slob_list->next == black_list_head )
-			break;
+		b = slob_page_alloc( best_pg, size, align);
 
-		if ( best_pg != NULL )
-			b = slob_page_alloc (best_pg, size, align);
-			
-		else 
-			break;
-		
-
-		if ( !b ) 
+		if (!b)
 		{
-			list_move_tail( (best_pg->list.prev)->next, black_list_head );
+			if ( best_pg == temp )
+				temp = sp->list.prev;
+			else
+				temp = (sp->list.prev) -> next;
+
+			list_move_tail ( (best_pg->list.prev)->next, black_list_head);
 			black_list_head = (best_pg->list.prev)->next;
-			best_pg = NULL;
+			sp = __container_of(temp, sp, list);	
+			continue;
 		}
+		else
+			break;
 
+
+		if ( (sp->list.prev) -> next == black_list_head )
+		{
+			b = NULL;
+			break;
+		}
 	}
-
 
 	
 	
