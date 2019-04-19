@@ -74,6 +74,7 @@
 #include "slab.h"
 
 #define BEST_FIT_ALLOCATOR
+//#define DEFAULT_ALLOCATOR
 
 long int memory_alloc = 0;
 long int memory_free;
