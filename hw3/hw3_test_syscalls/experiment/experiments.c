@@ -56,9 +56,10 @@ int main( int argc, char *argv[])
 	child_pid = fork();
 	if ( child_pid == 0 )
 	{
-		execlp ( "/usr/bin/firefox", "firefox", "https://www.youtube.com/watch?v=_VjFFGa1YJs", NULL );
+		execlp ( "./plateau", "plateau", NULL );
 	}
 
+	printf("Plateau (oropedio) results:\n" );
 	free_temp = 0;
 	alloc_temp = 0;
 	for ( i = 0; i < ITERATIONS; i++)
@@ -67,6 +68,7 @@ int main( int argc, char *argv[])
 		free_samples[i] = slob_get_total_free_mem();
 		alloc_temp += alloc_samples[i];
 		free_temp += free_samples[i];
+		printf("Iteration %d:\nAllocated: %ld\nFree %ld\n\n", i, alloc_samples[i], free_samples[i]);
 		sleep(1);
 	}
 
@@ -75,7 +77,38 @@ int main( int argc, char *argv[])
 	alloc_mean = alloc_temp / ITERATIONS;
 	free_mean = free_temp / ITERATIONS;
 
-	fprintf(fd_result, "Video streaming results:\n" );
+	fprintf(fd_result, "Plateau (oropedio) results:\n" );
+	fprintf(fd_result, "Mean Allocation: %lf\n", alloc_mean);
+	fprintf(fd_result, "Mean Free:       %lf\n\n", free_mean);
+
+
+
+
+	child_pid = fork();
+	if ( child_pid == 0 )
+	{
+		execlp ( "./rise", "rise", NULL );
+	}
+
+	printf("Rise (rampa) results:\n" );
+	free_temp = 0;
+	alloc_temp = 0;
+	for ( i = 0; i < ITERATIONS; i++)
+	{
+		alloc_samples[i] = slob_get_total_alloc_mem();
+		free_samples[i] = slob_get_total_free_mem();
+		alloc_temp += alloc_samples[i];
+		free_temp += free_samples[i];
+		printf("Iteration %d:\nAllocated: %ld\nFree %ld\n\n", i, alloc_samples[i], free_samples[i]);
+		sleep(1);
+	}
+
+	kill (child_pid, SIGKILL);
+
+	alloc_mean = alloc_temp / ITERATIONS;
+	free_mean = free_temp / ITERATIONS;
+
+	fprintf(fd_result, "Rise (rampa) results:\n" );
 	fprintf(fd_result, "Mean Allocation: %lf\n", alloc_mean);
 	fprintf(fd_result, "Mean Free:       %lf\n\n", free_mean);
 
@@ -87,6 +120,7 @@ int main( int argc, char *argv[])
 		execlp ( "/usr/bin/gcc", "gcc", "-O3", "-Wall", "-g", "code_to_run_gcc.c", "-o", "code_to_run_gcc",  NULL );
 	}
 
+	printf("Gcc results:\n" );
 	free_temp = 0;
 	alloc_temp = 0;
 	for ( i = 0; i < ITERATIONS; i++)
@@ -95,6 +129,7 @@ int main( int argc, char *argv[])
 		free_samples[i] = slob_get_total_free_mem();
 		alloc_temp += alloc_samples[i];
 		free_temp += free_samples[i];
+		printf("Iteration %d:\nAllocated: %ld\nFree %ld\n\n", i, alloc_samples[i], free_samples[i]);
 		sleep(1);
 	}
 
