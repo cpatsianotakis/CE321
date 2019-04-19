@@ -56,7 +56,7 @@ int main( int argc, char *argv[])
 	child_pid = fork();
 	if ( child_pid == 0 )
 	{
-		execlp ( "./plateau", "plateau", NULL );
+		execlp ( "experiment/plateau", "plateau", NULL );
 	}
 
 	printf("Plateau (oropedio) results:\n" );
@@ -87,7 +87,7 @@ int main( int argc, char *argv[])
 	child_pid = fork();
 	if ( child_pid == 0 )
 	{
-		execlp ( "./rise", "rise", NULL );
+		execlp ( "experiment/rise", "rise", NULL );
 	}
 
 	printf("Rise (rampa) results:\n" );
