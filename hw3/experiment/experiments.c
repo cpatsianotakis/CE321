@@ -83,7 +83,7 @@ int main( int argc, char *argv[])
 	child_pid = fork();
 	if ( child_pid == 0 )
 	{
-		execlp ( "/usr/bin/gcc", "gcc", "-Wall", NULL );
+		execlp ( "/usr/bin/gcc", "gcc", "-O3", "-Wall", "-g", "code_to_run_gcc.c", "-o", "code_to_run_gcc",  NULL );
 	}
 
 	free_temp = 0;
@@ -106,9 +106,7 @@ int main( int argc, char *argv[])
 	fprintf(fd_result, "Mean Allocation: %lf\n", alloc_mean);
 	fprintf(fd_result, "Mean Free:       %lf\n\n", free_mean);
 
+	fclose ( fd_result );
 
-
-
-	slob_get_total_alloc_mem();
-	slob_get_total_free_mem();
+	return 0;
 }
