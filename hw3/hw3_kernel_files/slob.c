@@ -58,7 +58,6 @@
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
-
 #include <linux/mm.h>
 #include <linux/swap.h> /* struct reclaim_state */
 #include <linux/cache.h>
@@ -75,6 +74,10 @@
 #include "slab.h"
 
 #define BEST_FIT_ALLOCATOR
+
+long int memory_alloc = 0;
+long int memory_free;
+
 /*
  * slob_block has a field 'units', which indicates size of block if +ve,
  * or offset of next block if -ve (in SLOB_UNITs).
@@ -126,6 +129,8 @@ static inline void clear_slob_page_free(struct page *sp)
 #define SLOB_UNIT sizeof(slob_t)
 #define SLOB_UNITS(size) DIV_ROUND_UP(size, SLOB_UNIT)
 
+#define UNITS_TO_BYTES(units) ( (SLOB_UNIT * ( units - 1) ) + 1)
+
 /*
  * struct slob_rcu is inserted at the tail of allocated slob blocks, which
  * were created with a SLAB_DESTROY_BY_RCU slab. slob_rcu is used to free
@@ -140,6 +145,12 @@ struct slob_rcu {
  * slob_lock protects all slob allocator structures.
  */
 static DEFINE_SPINLOCK(slob_lock);
+
+
+// static long int units_to_bytes( slobidx_t units )
+// {
+// 	return ( SLOB_UNIT * (units - 1) + 1 );
+// }
 
 /*
  * Encode the given size and next info into a free slob block s.
@@ -159,7 +170,7 @@ static void set_slob(slob_t *s, slobidx_t size, slob_t *next)
 /*
  * Return the size of a slob block.
  */
-static slobidx_t slob_units(slob_t *s)
+static slobidx_t slob_units(slob_t *s)//-----------------------------------------------------------------------------------------slob_units
 {
 	if (s->units > 0)
 		return s->units;
@@ -203,6 +214,8 @@ static void *slob_new_pages(gfp_t gfp, int order, int node)
 	if (!page)
 		return NULL;
 
+	memory_alloc = memory_alloc + sizeof(page);
+
 	return page_address(page);
 }
 
@@ -211,27 +224,60 @@ static void slob_free_pages(void *b, int order)
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += 1 << order;
 	free_pages((unsigned long)b, order);
+
+	memory_alloc = memory_alloc - sizeof(b);
 }
 
 /*
  * Allocate a slob block within a given slob_page sp.
  */
+//  ____            _     ______ _ _   
+// |  _ \          | |   |  ____(_) |  
+// | |_) | ___  ___| |_  | |__   _| |_ 
+// |  _ < / _ \/ __| __| |  __| | | __|
+// | |_) |  __/\__ \ |_  | |    | | |_ 
+// |____/ \___||___/\__| |_|    |_|\__|
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+// ..;;;;;..
+//  ':::::'
+//    ':`
+
 #ifdef BEST_FIT_ALLOCATOR
-static void *slob_page_alloc(struct page *sp, size_t size, int align)
+static void *slob_page_alloc(struct page *sp, size_t size, int align)//----------------------------------------------------------slob_page_alloc
 {
 	slob_t *prev, *cur, *next, *aligned = NULL;
 	int delta = 0, units = SLOB_UNITS(size);
-
+	static unsigned int counter = 0;
 	slobidx_t min_space = 0;
 	slob_t *min_block = NULL;
 	slob_t *min_block_prev = NULL;
-
 	slobidx_t avail;
+	
+
+	// Check counter value //
+	//diagnostic message 
+	if ( counter == 6000)
+		counter = 0;
+	else
+		counter++;
+
+	if ( counter == 0)
+	{
+		printk("slob_alloc: Request: %d\n", units);
+		printk("slob_alloc: Candidate blocks size: ");
+	}
+
 
 	// Searching for the best block of this page to fit //
-
 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
 		avail = slob_units(cur);
+
+		//diagnostic message
+		if ( counter == 0) printk(" %d", avail);
 
 		if (align) {
 			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
@@ -251,14 +297,22 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 		{
 			break;
 		}
-
 	}
 
 	if ( min_block == NULL )
+	{
+		//diagnostic message
+		if ( counter == 0)
+			printk("\nslob_alloc: Best Fit: None\n");
+
 		return NULL;
+	}
 
+	if ( counter == 0)
+		//diagnostic message
+		printk("\nslob_alloc: Best Fit: %d\n", slob_units(min_block) );
+	
 	// As the best block is found, allocate it! //
-
 	avail = slob_units( min_block );
 
 	if (align) {
@@ -296,6 +350,22 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 	return min_block;
 }
 #endif
+
+//      _       __            _ _   
+//     | |     / _|          | | |  
+//   __| | ___| |_ __ _ _   _| | |_ 
+//  / _` |/ _ \  _/ _` | | | | | __|
+// | (_| |  __/ || (_| | |_| | | |_ 
+//  \__,_|\___|_| \__,_|\__,_|_|\__|
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+//   ;;;;;
+// ..;;;;;..
+//  ':::::'
+//    ':`
+
 #ifdef DEFAULT_ALLOCATOR
 
 static void *slob_page_alloc(struct page *sp, size_t size, int align)
@@ -303,8 +373,25 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 	slob_t *prev, *cur, *aligned = NULL;
 	int delta = 0, units = SLOB_UNITS(size);
 
+	static unsigned int counter = 0;
+
+	// Check counter value //
+	if ( counter == 6000)
+		counter = 0;
+	else
+		counter++;
+
+	if ( counter == 0)
+	{
+		printk("slob_alloc: Request: %d\n", units);
+		printk("slob_alloc: Candidate blocks size: ");
+	}
+
 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
 		slobidx_t avail = slob_units(cur);
+		
+		if ( counter == 0)
+			printk(" %d", avail);
 
 		if (align) {
 			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
@@ -339,11 +426,20 @@ static void *slob_page_alloc(struct page *sp, size_t size, int align)
 			sp->units -= units;
 			if (!sp->units)
 				clear_slob_page_free(sp);
+
+			if ( counter == 0)
+				printk("\nslob_alloc: Next Fit: %d\n", slob_units(min_block));
 			return cur;
 		}
 		if (slob_last(cur))
+		{
+			if ( counter == 0)
+				printk("\nslob_alloc: Next Fit: None\n");
 			return NULL;
+		}
 	}
+
+
 }
 
 #endif
@@ -354,11 +450,31 @@ static int find_min_block( struct page *sp, size_t size, int align )
 	slob_t *prev, *cur, *aligned = NULL;
 	int delta = 0, units = SLOB_UNITS(size);
 
-	slobidx_t min_space = 0;
-	slob_t *min_block = NULL;
+	slobidx_t min_space;
+	slob_t *min_block;
+
+
+	static unsigned int counter = 0;
+
+	// Check counter value //
+	if ( counter == 6000)
+		counter = 0;
+	else
+		counter++;
+
+	if ( counter == 0)
+	{
+		printk("slob_alloc: Request: %d\n", units);
+		printk("slob_alloc: Candidate blocks size: ");
+	}
+
+	min_space = 0;
+	min_block = NULL;
 
 	for (prev = NULL, cur = sp->freelist; ; prev = cur, cur = slob_next(cur)) {
 		slobidx_t avail = slob_units(cur);
+		if ( counter == 0)
+			printk(" %d", avail);
 
 		if (align) {
 			aligned = (slob_t *)ALIGN((unsigned long)cur, align);
@@ -375,9 +491,14 @@ static int find_min_block( struct page *sp, size_t size, int align )
 
 		if ( slob_last(cur) )
 		{
-			if ( min_block == NULL )
+			if ( min_block == NULL ) {
+				if (counter == 0)
+					printk("\nslob_alloc: Best Fit: None\n");
 				return -1;
+			}
 			else
+				if ( counter == 0)
+					printk("\nslob_alloc: Best Fit: %d\n", slob_units(min_block));
 				break;
 		}
 
@@ -391,13 +512,17 @@ static int find_min_block( struct page *sp, size_t size, int align )
 static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 {
 
+#ifdef DEFAULT_ALLOCATOR
+	struct list_head *prev;
+#endif
+
 
 	struct page *best_pg = NULL;
 	int cur_space;
-	int min_space = -1;
-
+	int min_units = -1;
 
 	struct page *sp;
+	
 	struct list_head *slob_list;
 	slob_t *b = NULL;
 	unsigned long flags;
@@ -411,12 +536,24 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 	spin_lock_irqsave(&slob_lock, flags);
 
-#ifdef DEFAULT_ALLOCATOR
+	memory_free = 0;
+	list_for_each_entry(sp, &free_slob_small, list) {
+		memory_free = memory_free + (sp->units * SLOB_UNIT);
+	}
 
-	struct list_head *prev;
+	list_for_each_entry(sp, &free_slob_medium, list) {
+		memory_free = memory_free + (sp->units * SLOB_UNIT);
+	}
+
+	list_for_each_entry(sp, &free_slob_large, list) {
+		memory_free = memory_free + (sp->units * SLOB_UNIT);
+	}
+
+#ifdef DEFAULT_ALLOCATOR
 
 	/* Iterate through each partially free page, try to find room */
 	list_for_each_entry(sp, slob_list, list) {
+
 #ifdef CONFIG_NUMA
 		/*
 		 * If there's a node specification, search for a partial
@@ -467,30 +604,34 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 
 		if ( cur_space > 0 )
 		{
-			if ( cur_space < min_space || min_space == -1 )
+			if ( sp->units < min_units || min_units == -1 )
 			{
-				min_space = cur_space;
+				min_units = sp->units;
 				best_pg = sp;
 			}
 
 		}
 		else if ( cur_space == 0 )
 		{
-			min_space = cur_space;
+			min_units = sp->units;
 			best_pg = sp;
 			break;
 		}
+	
 	}
 
-	if ( min_space >= 0 ) 
+	if ( min_units >= 0) 
 	{
 		b = slob_page_alloc (best_pg, size, align);
 	}
 
-	
-	
+
 #endif
 
+	if (b != NULL)
+	{
+		memory_free = memory_free - ( slob_units(b) * SLOB_UNIT );
+	}
 	
 	spin_unlock_irqrestore(&slob_lock, flags);
 
@@ -503,6 +644,7 @@ static void *slob_alloc(size_t size, gfp_t gfp, int align, int node)
 		__SetPageSlab(sp);
 
 		spin_lock_irqsave(&slob_lock, flags);
+
 		sp->units = SLOB_UNITS(PAGE_SIZE);
 		sp->freelist = b;
 		INIT_LIST_HEAD(&sp->list);
@@ -528,6 +670,7 @@ static void slob_free(void *block, int size)
 	unsigned long flags;
 	struct list_head *slob_list;
 
+
 	if (unlikely(ZERO_OR_NULL_PTR(block)))
 		return;
 	BUG_ON(!size);
@@ -539,6 +682,7 @@ static void slob_free(void *block, int size)
 
 	if (sp->units + units == SLOB_UNITS(PAGE_SIZE)) {
 		/* Go directly to page allocator. Do not pass slob allocator */
+
 		if (slob_page_free(sp))
 			clear_slob_page_free(sp);
 		spin_unlock_irqrestore(&slob_lock, flags);
@@ -550,6 +694,7 @@ static void slob_free(void *block, int size)
 
 	if (!slob_page_free(sp)) {
 		/* This slob page is about to become partially free. Easy! */
+
 		sp->units = units;
 		sp->freelist = b;
 		set_slob(b, units,

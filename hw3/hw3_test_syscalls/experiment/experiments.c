@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <unistd.h>
+#include "../memory_stats.h"
 
 
 #define ITERATIONS

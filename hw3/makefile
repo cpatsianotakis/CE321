@@ -1,0 +1,29 @@
+# The C compiler
+CC = gcc
+
+# Put any flags for the C compiler here
+CFLAGS = -Wall -g
+
+OBJECTS = experiments test_hw3 memory_stats.o
+
+all: $(OBJECTS)
+
+memory_stats.o:
+	$(CC) $(CFLAGS) memory_stats.c -o memory_stats.o
+	ar rcs libmemory_stats  memory_stats.o
+
+
+experiments: memory_stats.o
+	$(CC) $(CFLAGS) experiments.c -o experiments libmemory_stats
+	sudo apt install mpv
+
+test_hw3: memory_stats.o
+	$(CC) $(CFLAGS) test_hw3.c -o test_hw3 libmemory_stats
+
+
+.PHONY: clean
+
+clean:
+	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o
+
+
