@@ -6,7 +6,7 @@ CFLAGS = -Wall -g
 
 OBJECTS = test_hw3 memory_stats.o
 
-all: $(OBJECTS)
+all: $(OBJECTS) experiments
 
 memory_stats.o:
 	$(CC) $(CFLAGS) memory_stats.c -o memory_stats.o
@@ -24,6 +24,6 @@ test_hw3: memory_stats.o
 .PHONY: clean
 
 clean:
-	rm -v $(EXEC_NAME) lib$(LIB_NAME).a *.o
+	rm $(OBJECTS) experiment/plateau experiment/rise experiments
 
 
