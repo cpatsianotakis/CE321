@@ -122,12 +122,13 @@ int compareHash( FILE *hash_file, char [] in_hash )
 	    	cur_position = fseek (hash_file, 1, SEEK_CUR );
 	    }
 
-	} while ( counter == 0 || strcmp (check_hash, in_hash) != 0 );
+	    if ( cur_position == fseek ( hash_file, 0, SEEK_END ) )
+		{
+			id = addHash ( hash_file, new_hash );
+			break;
+		}
 
-	if ( cur_position == fseek ( hash_file, 0, SEEK_END ) )
-	{
-		id = addHash ( hash_file, new_hash );
-	}
+	} while ( counter == 0 || strcmp (check_hash, in_hash) != 0 );
 
 	return id;
 }
