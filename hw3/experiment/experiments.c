@@ -117,7 +117,7 @@ int main( int argc, char *argv[])
 	child_pid = fork();
 	if ( child_pid == 0 )
 	{
-		execlp ( "/usr/bin/gcc", "gcc", "-O3", "-Wall", "-g", "code_to_run_gcc.c", "-o", "code_to_run_gcc",  NULL );
+		execlp ( "/usr/bin/gcc", "gcc", "-O3", "-Wall", "-g", "experiment/code_to_run_gcc.c", "-o", "experiment/code_to_run_gcc",  NULL );
 	}
 
 	printf("Gcc results:\n" );
