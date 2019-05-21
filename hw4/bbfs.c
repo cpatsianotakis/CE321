@@ -45,92 +45,175 @@
 
 #define hashLedger "%s/hashLedger"
 
-int addHash (FILE *hash_file, char *new_hash )
+int addHash (FILE *hash_file, int hash_file_size, char *new_hash )
 {
-	int cur_position;
-	int id;
-	char id_char [3];
-	char str_to_hash_file [29];
+    int cur_position;
+    int id;
+    char id_char [3];
+    char str_to_hash_file [29];
 
-	int counter;
-	char counter_char [3];
-	
-	// Find empty place //
+    int counter;
+    char counter_char [3];
+    
+    // Find empty place //
     fseek (hash_file, 0, SEEK_SET);
     do {
-    	
-    	fread (id_char, sizeof(char), 2, hash_file );
-    	id_char[2] = '\0';
-    	id = atoi (id_char);
+        //reads the ID
+        fread (id_char, sizeof(char), 2, hash_file );
+        id_char[2] = '\0';
+        id = atoi (id_char);
+        printf("id : %d\n",id);
+        //passes the hash
+        fseek (hash_file, 25, SEEK_CUR );
 
-	    fseek (hash_file, 25, SEEK_CUR );
-	    fread (counter_char, sizeof(char), 2, hash_file);
-	    counter = atoi ( counter_char );
-	    cur_position = fseek (hash_file, 1, SEEK_CUR );
+        //reads the counter
+        fread (counter_char, sizeof(char), 2, hash_file);
+        counter = atoi ( counter_char );
 
-	} while ( counter != 0 );
+        // Go to next line //
+        //cur_position = fseek (hash_file, 1, SEEK_CUR );
 
-	if ( cur_position+1 == fseek (hash_file, 0, SEEK_END ) )
-	{
-		sprintf ( str_to_hash_file, "%2d, 00000000000000000000, 00\n" id + 1 );
-		fwrite  ( str_to_hash_file, 28, 1, hash_file );
-	}
+        // Get current position //
+        cur_position = ftell ( hash_file );
+    } while ( counter != 0 );
 
-	fseek ( hash_file, cur_position - 23, SEEK_SET );
-	fwrite ( new_hash, sizeof(char), 20, hash_file);
-	fseek (hash_file, 2, SEEK_CUR);
+    //printf("cur_position: %d\n", cur_position );
+    
 
-	counter++;
-	sprintf(counter_char, "%2d", counter);
-	fwrite (counter_char, sizeof(char), 2, hash_file );
+    if ( cur_position == hash_file_size )
+    {
+        sprintf ( str_to_hash_file, "%2d, 00000000000000000000, 00\n" ,id + 1 );
+        fwrite  ( str_to_hash_file, 29, 1, hash_file );
+        printf("checkpoint line:%d\n",__LINE__);
+    }
 
-	return id;
+    printf("cur_position: %d ", cur_position );
+    printf("new seek: %d\n", fseek ( hash_file, cur_position - 25, SEEK_SET ) );
+    fwrite ( new_hash, sizeof(char), 20, hash_file);
+    fseek (hash_file, 2, SEEK_CUR);
+    fwrite ( "01", sizeof(char), 2, hash_file);
+
+    return id;
 }
 
-int compareHash( FILE *hash_file, char [] in_hash )
+int compareHash( int *new_block, FILE *hash_file, char* in_hash )
 {
-	int cur_position;
-	int id;
+    int cur_position;
+    int id;
+    char counter_char [3];
+    char id_char [3];
+    int counter;
+    char check_hash [] = "00000000000000000000";
+    int found = 1;
 
-	char id_char [3];
+    *new_block = 0;
 
-	char check_hash [] = "00000000000000000000";
+    //find the EOF offset
+    int file_size;
+    fseek (hash_file, 0, SEEK_END);
+    file_size = ftell( hash_file );
+    printf("file_size: %d\n\n", file_size );
 
+    //set offset to 0
     fseek (hash_file, 0, SEEK_SET);
+
     do {
 
-    	fseek ( hash_file, 26, SEEK_CUR );
-    	fread (counter_char, sizeof(char), 2, hash_file);
-	    counter = atoi ( counter_char );
+        cur_position = ftell(hash_file);
+        printf("curr Pos: %d\n",cur_position);
+        if ( cur_position == file_size )
+        {   
+            fseek (hash_file, 0, SEEK_SET);
+            id = addHash ( hash_file, file_size, in_hash );
+            found = 0;
+            *new_block = 1;
+            break;
+        }
 
-	    if ( counter != 0 )
-	    {
-	    	fseek ( hash_file, -28, SEEK_CUR );
+        fread ( id_char, sizeof(char), 2, hash_file );
+        id_char[2] = '\0';
+        id = atoi ( id_char );
 
-	    	fread ( id_char, sizeof(char), 2, hash_file );
-	    	id_char[2] = '\0';
-	    	id = atoi ( id_char );
+        printf("id taken: %d \n",id);
 
-	    	fseek ( hash_file, 2, SEEK_CUR );
-	    	fread ( check_hash, sizeof(char), 20, hash_file );
-	    	check_hash[20] = '\0';
+        fseek ( hash_file, 2, SEEK_CUR );
+        fread ( check_hash, sizeof(char), 20, hash_file );
+        check_hash[20] = '\0';
 
-	    	cur_position = fseek ( hash_file, 25, SEEK_CUR );
-	    }
-	    else
-	    {
-	    	cur_position = fseek (hash_file, 1, SEEK_CUR );
-	    }
+        printf("hash taken: %s \n\n",check_hash);
 
-	    if ( cur_position == fseek ( hash_file, 0, SEEK_END ) )
+        fseek( hash_file, 5,SEEK_CUR);
+
+    } while (strcmp (check_hash, in_hash) != 0 && cur_position < 200 );
+
+    if (found){
+
+        // Read counter value //
+        fseek( hash_file, -3,SEEK_CUR);
+        fread (counter_char, sizeof(char), 2, hash_file);
+        counter = atoi ( counter_char );
+
+        // Check if new file block must be created //
+        if ( counter == 0)
+            *new_block = 1;
+
+        // Upgrade counter value //
+        fseek( hash_file, -2,SEEK_CUR);
+        counter++;
+        sprintf(counter_char,"%02d",counter);
+        fwrite( counter_char, sizeof(char),2,hash_file);
+
+    }
+    return id;
+}
+
+void write_blocks(char [] buf, FILE *hash_file, FILE *file )
+{
+	const int block_size = 4096;
+	int buf_size;
+	int num_blocks;
+	int i, j, new_block;
+	char [block_size+1] block;
+	char hash [20];
+	int block_id;
+	char block_id_char[4];
+	char hash_file_name[7];
+
+	FILE *new_block_file;
+
+	buf_size = strlen ( buf );
+
+	num_blocks = buf_size / block_size;
+
+	fseek ( file, 0, SEEK_SET);
+	for ( i = 0; i < num_blocks; i++ )
+	{
+
+		// Initialize block table //
+		for ( j = 0; j < block_size; j++)
+			block[j] = buf[i*block_size + j];
+		// Make block table string //
+		block[block_size] = '\0';
+
+		// Calculate hash //
+		SHA1((unsigned char *)block, 4096, hash);
+
+		// Find id for this hash //
+		block_id = compareHash( &new_block, hash_file, hash );
+
+		//Write id to the file.txt file
+		sprintf ( block_id_char, "%2d\n", block_id );
+		fwrite ( block_id_char, sizeof(char), 3, file );
+
+		// If there is no block with this hash, make one! //
+		if ( new_block )
 		{
-			id = addHash ( hash_file, new_hash );
-			break;
+			sprintf ( hash_file_name, "%2d.txt", block_id);
+			new_block_file = fopen( hash_file_name, "wb+");
+			fwrite ( block, sizeof(char), block_size, hash_file );
+			fclose ( hash_file );
 		}
-
-	} while ( counter == 0 || strcmp (check_hash, in_hash) != 0 );
-
-	return id;
+	}
 }
 
 //  All the paths I see are relative to the root of the mounted
@@ -458,6 +541,8 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,
 
     sprintf( hashLedger_path, hashLedger, path );
     hash_file = fopen (hashLedger_path, "r+" );
+
+    write_buf( buf, hash_file, file )
 
 
     return log_syscall("pwrite", pwrite(fi->fh, buf, size, offset), 0);
