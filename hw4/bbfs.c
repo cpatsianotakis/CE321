@@ -1,29 +1,5 @@
-/*
-  Big Brother File System
-  Copyright (C) 2012 Joseph J. Pfeiffer, Jr., Ph.D. <pfeiffer@cs.nmsu.edu>
-
-  This program can be distributed under the terms of the GNU GPLv3.
-  See the file COPYING.
-
-  This code is derived from function prototypes found /usr/include/fuse/fuse.h
-  Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
-  His code is licensed under the LGPLv2.
-  A copy of that code is included in the file fuse.h
-  
-  The point of this FUSE filesystem is to provide an introduction to
-  FUSE.  It was my first FUSE filesystem as I got to know the
-  software; hopefully, the comments in this code will help people who
-  follow later to get a gentler introduction.
-
-  This might be called a no-op filesystem:  it doesn't impose
-  filesystem semantics on top of any other existing structure.  It
-  simply reports the requests that come in, and passes them to an
-  underlying filesystem.  The information is saved in a logfile named
-  bbfs.log, in the directory from which you run bbfs.
-*/
 #include "config.h"
 #include "params.h"
-
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -36,240 +12,84 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <openssl/sha.h>
+#include <sys/stat.h>
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
 #endif
 
 #include "log.h"
+#include "test_lib.h"
 
-#define hashLedger "%s/hashLedger"
+#define BASE 4096
 
-int addHash (FILE *hash_file, int hash_file_size, char *new_hash )
-{
-    int cur_position;
-    int id;
-    char id_char [3];
-    char str_to_hash_file [29];
-
-    int counter;
-    char counter_char [3];
-    
-    // Find empty place //
-    fseek (hash_file, 0, SEEK_SET);
-    do {
-        //reads the ID
-        fread (id_char, sizeof(char), 2, hash_file );
-        id_char[2] = '\0';
-        id = atoi (id_char);
-        printf("id : %d\n",id);
-        //passes the hash
-        fseek (hash_file, 25, SEEK_CUR );
-
-        //reads the counter
-        fread (counter_char, sizeof(char), 2, hash_file);
-        counter = atoi ( counter_char );
-
-        // Go to next line //
-        //cur_position = fseek (hash_file, 1, SEEK_CUR );
-
-        // Get current position //
-        cur_position = ftell ( hash_file );
-    } while ( counter != 0 );
-
-    //printf("cur_position: %d\n", cur_position );
-    
-
-    if ( cur_position == hash_file_size )
-    {
-        sprintf ( str_to_hash_file, "%2d, 00000000000000000000, 00\n" ,id + 1 );
-        fwrite  ( str_to_hash_file, 29, 1, hash_file );
-        printf("checkpoint line:%d\n",__LINE__);
-    }
-
-    printf("cur_position: %d ", cur_position );
-    printf("new seek: %d\n", fseek ( hash_file, cur_position - 25, SEEK_SET ) );
-    fwrite ( new_hash, sizeof(char), 20, hash_file);
-    fseek (hash_file, 2, SEEK_CUR);
-    fwrite ( "01", sizeof(char), 2, hash_file);
-
-    return id;
-}
-
-int compareHash( int *new_block, FILE *hash_file, char* in_hash )
-{
-    int cur_position;
-    int id;
-    char counter_char [3];
-    char id_char [3];
-    int counter;
-    char check_hash [] = "00000000000000000000";
-    int found = 1;
-
-    *new_block = 0;
-
-    //find the EOF offset
-    int file_size;
-    fseek (hash_file, 0, SEEK_END);
-    file_size = ftell( hash_file );
-    printf("file_size: %d\n\n", file_size );
-
-    //set offset to 0
-    fseek (hash_file, 0, SEEK_SET);
-
-    do {
-
-        cur_position = ftell(hash_file);
-        printf("curr Pos: %d\n",cur_position);
-        if ( cur_position == file_size )
-        {   
-            fseek (hash_file, 0, SEEK_SET);
-            id = addHash ( hash_file, file_size, in_hash );
-            found = 0;
-            *new_block = 1;
-            break;
-        }
-
-        fread ( id_char, sizeof(char), 2, hash_file );
-        id_char[2] = '\0';
-        id = atoi ( id_char );
-
-        printf("id taken: %d \n",id);
-
-        fseek ( hash_file, 2, SEEK_CUR );
-        fread ( check_hash, sizeof(char), 20, hash_file );
-        check_hash[20] = '\0';
-
-        printf("hash taken: %s \n\n",check_hash);
-
-        fseek( hash_file, 5,SEEK_CUR);
-
-    } while (strcmp (check_hash, in_hash) != 0 && cur_position < 200 );
-
-    if (found){
-
-        // Read counter value //
-        fseek( hash_file, -3,SEEK_CUR);
-        fread (counter_char, sizeof(char), 2, hash_file);
-        counter = atoi ( counter_char );
-
-        // Check if new file block must be created //
-        if ( counter == 0)
-            *new_block = 1;
-
-        // Upgrade counter value //
-        fseek( hash_file, -2,SEEK_CUR);
-        counter++;
-        sprintf(counter_char,"%02d",counter);
-        fwrite( counter_char, sizeof(char),2,hash_file);
-
-    }
-    return id;
-}
-
-void write_blocks(char [] buf, FILE *hash_file, FILE *file )
-{
-	const int block_size = 4096;
-	int buf_size;
-	int num_blocks;
-	int i, j, new_block;
-	char [block_size+1] block;
-	char hash [20];
-	int block_id;
-	char block_id_char[4];
-	char hash_file_name[7];
-
-	FILE *new_block_file;
-
-	buf_size = strlen ( buf );
-
-	num_blocks = buf_size / block_size;
-
-	fseek ( file, 0, SEEK_SET);
-	for ( i = 0; i < num_blocks; i++ )
-	{
-
-		// Initialize block table //
-		for ( j = 0; j < block_size; j++)
-			block[j] = buf[i*block_size + j];
-		// Make block table string //
-		block[block_size] = '\0';
-
-		// Calculate hash //
-		SHA1((unsigned char *)block, 4096, hash);
-
-		// Find id for this hash //
-		block_id = compareHash( &new_block, hash_file, hash );
-
-		//Write id to the file.txt file
-		sprintf ( block_id_char, "%2d\n", block_id );
-		fwrite ( block_id_char, sizeof(char), 3, file );
-
-		// If there is no block with this hash, make one! //
-		if ( new_block )
-		{
-			sprintf ( hash_file_name, "%2d.txt", block_id);
-			new_block_file = fopen( hash_file_name, "wb+");
-			fwrite ( block, sizeof(char), block_size, hash_file );
-			fclose ( hash_file );
-		}
-	}
-}
-
-//  All the paths I see are relative to the root of the mounted
-//  filesystem.  In order to get to the underlying filesystem, I need to
-//  have the mountpoint.  I'll save it away early on in main(), and then
-//  whenever I need a path for something I'll call this to construct
-//  it.
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
     strcpy(fpath, BB_DATA->rootdir);
-    strncat(fpath, path, PATH_MAX); // ridiculously long paths will
-				    // break here
-
-    log_msg("    bb_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
-	    BB_DATA->rootdir, path, fpath);
+    strncat(fpath, path, PATH_MAX);
 }
 
-///////////////////////////////////////////////////////////
-//
-// Prototypes for all these functions, and the C-style comments,
-// come from /usr/include/fuse.h
-//
-/** Get file attributes.
- *
- * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
- * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
- * mount option is given.
- */
-int bb_getattr(const char *path, struct stat *statbuf)
+static void StoragePath(char fpath[PATH_MAX], const char *path)
 {
-    int retstat;
-    char fpath[PATH_MAX];
+    strcpy(fpath, BB_DATA->hiddendir);
+    strncat(fpath, path, PATH_MAX);
+}
+
+//                                                                  bbbbbbbb            
+//                           tttt                              iiii b::::::b            
+//                        ttt:::t                             i::::ib::::::b            
+//                        t:::::t                              iiii b::::::b            
+//                        t:::::t                                    b:::::b            
+//   aaaaaaaaaaaaa  ttttttt:::::ttttttt   rrrrr   rrrrrrrrr  iiiiiii b:::::bbbbbbbbb    
+//   a::::::::::::a t:::::::::::::::::t   r::::rrr:::::::::r i:::::i b::::::::::::::bb  
+//   aaaaaaaaa:::::at:::::::::::::::::t   r:::::::::::::::::r i::::i b::::::::::::::::b 
+//            a::::atttttt:::::::tttttt   rr::::::rrrrr::::::ri::::i b:::::bbbbb:::::::b
+//     aaaaaaa:::::a      t:::::t          r:::::r     r:::::ri::::i b:::::b    b::::::b
+//   aa::::::::::::a      t:::::t          r:::::r     rrrrrrri::::i b:::::b     b:::::b
+//  a::::aaaa::::::a      t:::::t          r:::::r            i::::i b:::::b     b:::::b
+// a::::a    a:::::a      t:::::t    ttttttr:::::r            i::::i b:::::b     b:::::b
+// a::::a    a:::::a      t::::::tttt:::::tr:::::r           i::::::ib:::::bbbbbb::::::b
+// a:::::aaaa::::::a      tt::::::::::::::tr:::::r           i::::::ib::::::::::::::::b 
+//  a::::::::::aa:::a       tt:::::::::::ttr:::::r           i::::::ib:::::::::::::::b  
+//   aaaaaaaaaa  aaaa         ttttttttttt  rrrrrrr           iiiiiiiibbbbbbbbbbbbbbbb   
+/*int bb_getattr(const char *path, struct stat *statbuf)
+{
+    int retstat,temp;
+    char fpath[PATH_MAX]; //full path of the file 
     
-    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n",
-	  path, statbuf);
+    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n", path, statbuf);
+    
     bb_fullpath(fpath, path);
 
     retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
-    
+    temp= (statbuf->st_size / 4); //4 because of the siez of the ID : XXX\n
+    statbuf->st_size = temp*BASE;
+
     log_stat(statbuf);
     
     return retstat;
-}
+}*/
+int bb_getattr(const char *path, struct stat *statbuf)
+{
+    int retstat;
+    char fpath[PATH_MAX]; //full path of the file
+    int totalBytes = 0;
+    char *ret; 
+    log_msg("\nbb_getattr(path=\"%s\", statbuf=0x%08x)\n", path, statbuf);
+    
+    bb_fullpath(fpath, path);
 
-/** Read the target of a symbolic link
- *
- * The buffer should be filled with a null terminated string.  The
- * buffer size argument includes the space for the terminating
- * null character.  If the linkname is too long to fit in the
- * buffer, it should be truncated.  The return value should be 0
- * for success.
- */
-// Note the system readlink() will truncate and lose the terminating
-// null.  So, the size passed to to the system readlink() must be one
-// less than the size passed to bb_readlink()
-// bb_readlink() code by Bernardo F Costa (thanks!)
+    retstat = log_syscall("lstat", lstat(fpath, statbuf), 0);
+
+    totalBytes = findRealSize (BB_DATA->hiddendir, statbuf->st_size, fpath, BASE);
+    if ( totalBytes > 0 ) {
+        statbuf->st_size = totalBytes;
+        log_msg("\nReal Bytes of File = %d\n", totalBytes );
+    }
+    log_stat(statbuf);
+    return retstat;
+}
 int bb_readlink(const char *path, char *link, size_t size)
 {
     int retstat;
@@ -288,20 +108,29 @@ int bb_readlink(const char *path, char *link, size_t size)
     
     return retstat;
 }
-
-/** Create a file node
- *
- * There is no create() operation, mknod() will be called for
- * creation of all non-directory, non-symlink nodes.
- */
-// shouldn't that comment be "if" there is no.... ?
+//                                                                                           dddddddd
+//                         kkkkkkkk                                                          d::::::d
+//                         k::::::k                                                          d::::::d
+//                         k::::::k                                                          d::::::d
+//                         k::::::k                                                          d:::::d 
+//    mmmmmmm    mmmmmmm    k:::::k    kkkkkkknnnn  nnnnnnnn       ooooooooooo       ddddddddd:::::d 
+//  mm:::::::m  m:::::::mm  k:::::k   k:::::k n:::nn::::::::nn   oo:::::::::::oo   dd::::::::::::::d 
+// m::::::::::mm::::::::::m k:::::k  k:::::k  n::::::::::::::nn o:::::::::::::::o d::::::::::::::::d 
+// m::::::::::::::::::::::m k:::::k k:::::k   nn:::::::::::::::no:::::ooooo:::::od:::::::ddddd:::::d 
+// m:::::mmm::::::mmm:::::m k::::::k:::::k      n:::::nnnn:::::no::::o     o::::od::::::d    d:::::d 
+// m::::m   m::::m   m::::m k:::::::::::k       n::::n    n::::no::::o     o::::od:::::d     d:::::d 
+// m::::m   m::::m   m::::m k:::::::::::k       n::::n    n::::no::::o     o::::od:::::d     d:::::d 
+// m::::m   m::::m   m::::m k::::::k:::::k      n::::n    n::::no::::o     o::::od:::::d     d:::::d 
+// m::::m   m::::m   m::::mk::::::k k:::::k     n::::n    n::::no:::::ooooo:::::od::::::ddddd::::::dd
+// m::::m   m::::m   m::::mk::::::k  k:::::k    n::::n    n::::no:::::::::::::::o d:::::::::::::::::d
+// m::::m   m::::m   m::::mk::::::k   k:::::k   n::::n    n::::n oo:::::::::::oo   d:::::::::ddd::::d
+// mmmmmm   mmmmmm   mmmmmmkkkkkkkk    kkkkkkk  nnnnnn    nnnnnn   ooooooooooo      ddddddddd   ddddd
 int bb_mknod(const char *path, mode_t mode, dev_t dev)
 {
     int retstat;
     char fpath[PATH_MAX];
     
-    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",
-	  path, mode, dev);
+    log_msg("\nbb_mknod(path=\"%s\", mode=0%3o, dev=%lld)\n",path, mode, dev);
     bb_fullpath(fpath, path);
     
     // On Linux this could just be 'mknod(path, mode, dev)' but this
@@ -310,9 +139,9 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     // make a fifo, but saying it should never actually be used for
     // that.
     if (S_ISREG(mode)) {
-		retstat = log_syscall("open", open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
-		if (retstat >= 0)
-		    retstat = log_syscall("close", close(retstat), 0);
+	retstat = log_syscall("open", open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode), 0);
+	if (retstat >= 0)
+	    retstat = log_syscall("close", close(retstat), 0);
     } else
 	if (S_ISFIFO(mode))
 	    retstat = log_syscall("mkfifo", mkfifo(fpath, mode), 0);
@@ -322,7 +151,6 @@ int bb_mknod(const char *path, mode_t mode, dev_t dev)
     return retstat;
 }
 
-/** Create a directory */
 int bb_mkdir(const char *path, mode_t mode)
 {
     char fpath[PATH_MAX];
@@ -338,14 +166,26 @@ int bb_mkdir(const char *path, mode_t mode)
 int bb_unlink(const char *path)
 {
     char fpath[PATH_MAX];
+    int fileSize;
+    FILE* fd;
+    char* IDsToRemove;
     
     log_msg("bb_unlink(path=\"%s\")\n",
 	    path);
     bb_fullpath(fpath, path);
 
+    //#################### OUR LINES ###################//
+    fd = fopen(fpath,"r+");
+    fseek (fd, 0, SEEK_END);//find the EOF offset
+    fileSize = ftell( fd );
+    fclose(fd);
+    IDsToRemove = getOverwrittenBlocks(fpath, (fileSize/4)*BASE, 0, BASE);
+    log_msg("...IDs to remove=->%s<-...\n", IDsToRemove);
+    removeBlocks( IDsToRemove, BB_DATA->hashLedger, BB_DATA->hiddendir);
+    //#################### OUR LINES ###################//
+
     return log_syscall("unlink", unlink(fpath), 0);
 }
-
 /** Remove a directory */
 int bb_rmdir(const char *path)
 {
@@ -358,11 +198,6 @@ int bb_rmdir(const char *path)
     return log_syscall("rmdir", rmdir(fpath), 0);
 }
 
-/** Create a symbolic link */
-// The parameters here are a little bit confusing, but do correspond
-// to the symlink() system call.  The 'path' is where the link points,
-// while the 'link' is the link itself.  So we need to leave the path
-// unaltered, but insert the link into the mounted directory.
 int bb_symlink(const char *path, const char *link)
 {
     char flink[PATH_MAX];
@@ -375,7 +210,6 @@ int bb_symlink(const char *path, const char *link)
 }
 
 /** Rename a file */
-// both path and newpath are fs-relative
 int bb_rename(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX];
@@ -389,7 +223,6 @@ int bb_rename(const char *path, const char *newpath)
     return log_syscall("rename", rename(fpath, fnewpath), 0);
 }
 
-/** Create a hard link to a file */
 int bb_link(const char *path, const char *newpath)
 {
     char fpath[PATH_MAX], fnewpath[PATH_MAX];
@@ -401,8 +234,6 @@ int bb_link(const char *path, const char *newpath)
 
     return log_syscall("link", link(fpath, fnewpath), 0);
 }
-
-/** Change the permission bits of a file */
 int bb_chmod(const char *path, mode_t mode)
 {
     char fpath[PATH_MAX];
@@ -413,10 +244,7 @@ int bb_chmod(const char *path, mode_t mode)
 
     return log_syscall("chmod", chmod(fpath, mode), 0);
 }
-
-/** Change the owner and group of a file */
-int bb_chown(const char *path, uid_t uid, gid_t gid)
-  
+int bb_chown(const char *path, uid_t uid, gid_t gid) 
 {
     char fpath[PATH_MAX];
     
@@ -426,8 +254,6 @@ int bb_chown(const char *path, uid_t uid, gid_t gid)
 
     return log_syscall("chown", chown(fpath, uid, gid), 0);
 }
-
-/** Change the size of a file */
 int bb_truncate(const char *path, off_t newsize)
 {
     char fpath[PATH_MAX];
@@ -438,9 +264,6 @@ int bb_truncate(const char *path, off_t newsize)
 
     return log_syscall("truncate", truncate(fpath, newsize), 0);
 }
-
-/** Change the access and/or modification times of a file */
-/* note -- I'll want to change this as soon as 2.6 is in debian testing */
 int bb_utime(const char *path, struct utimbuf *ubuf)
 {
     char fpath[PATH_MAX];
@@ -451,24 +274,31 @@ int bb_utime(const char *path, struct utimbuf *ubuf)
 
     return log_syscall("utime", utime(fpath, ubuf), 0);
 }
-
-/** File open operation
- *
- * No creation, or truncation flags (O_CREAT, O_EXCL, O_TRUNC)
- * will be passed to open().  Open should check if the operation
- * is permitted for the given flags.  Optionally open may also
- * return an arbitrary filehandle in the fuse_file_info structure,
- * which will be passed to all file operations.
- *
- * Changed in version 2.2
- */
+//    ooooooooooo   ppppp   ppppppppp       eeeeeeeeeeee    nnnn  nnnnnnnn    
+//  oo:::::::::::oo p::::ppp:::::::::p    ee::::::::::::ee  n:::nn::::::::nn  
+// o:::::::::::::::op:::::::::::::::::p  e::::::eeeee:::::een::::::::::::::nn 
+// o:::::ooooo:::::opp::::::ppppp::::::pe::::::e     e:::::enn:::::::::::::::n
+// o::::o     o::::o p:::::p     p:::::pe:::::::eeeee::::::e  n:::::nnnn:::::n
+// o::::o     o::::o p:::::p     p:::::pe:::::::::::::::::e   n::::n    n::::n
+// o::::o     o::::o p:::::p     p:::::pe::::::eeeeeeeeeee    n::::n    n::::n
+// o::::o     o::::o p:::::p    p::::::pe:::::::e             n::::n    n::::n
+// o:::::ooooo:::::o p:::::ppppp:::::::pe::::::::e            n::::n    n::::n
+// o:::::::::::::::o p::::::::::::::::p  e::::::::eeeeeeee    n::::n    n::::n
+//  oo:::::::::::oo  p::::::::::::::pp    ee:::::::::::::e    n::::n    n::::n
+//    ooooooooooo    p::::::pppppppp        eeeeeeeeeeeeee    nnnnnn    nnnnnn
+//                   p:::::p                                                  
+//                   p:::::p                                                  
+//                  p:::::::p                                                 
+//                  p:::::::p                                                 
+//                  p:::::::p                                                 
+//                  ppppppppp                                                 
 int bb_open(const char *path, struct fuse_file_info *fi)
 {
     int retstat = 0;
     int fd;
     char fpath[PATH_MAX];
     
-    log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n",
+    log_msg("\nbb_open(path\"%s\", fi=0x%08x)\n----------\n",
 	    path, fi);
     bb_fullpath(fpath, path);
     
@@ -481,80 +311,173 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 	
     fi->fh = fd;
 
-    log_fi(fi);
+    //log_fi(fi);
     
     return retstat;
 }
+//                                                                    dddddddd
+//                                                                    d::::::d
+//                                                                    d::::::d
+//                                                                    d::::::d
+//                                                                    d:::::d 
+// rrrrr   rrrrrrrrr       eeeeeeeeeeee    aaaaaaaaaaaaa      ddddddddd:::::d 
+// r::::rrr:::::::::r    ee::::::::::::ee  a::::::::::::a   dd::::::::::::::d 
+// r:::::::::::::::::r  e::::::eeeee:::::eeaaaaaaaaa:::::a d::::::::::::::::d 
+// rr::::::rrrrr::::::re::::::e     e:::::e         a::::ad:::::::ddddd:::::d 
+//  r:::::r     r:::::re:::::::eeeee::::::e  aaaaaaa:::::ad::::::d    d:::::d 
+//  r:::::r     rrrrrrre:::::::::::::::::e aa::::::::::::ad:::::d     d:::::d 
+//  r:::::r            e::::::eeeeeeeeeee a::::aaaa::::::ad:::::d     d:::::d 
+//  r:::::r            e:::::::e         a::::a    a:::::ad:::::d     d:::::d 
+//  r:::::r            e::::::::e        a::::a    a:::::ad::::::ddddd::::::dd
+//  r:::::r             e::::::::eeeeeeeea:::::aaaa::::::a d:::::::::::::::::d
+//  r:::::r              ee:::::::::::::e a::::::::::aa:::a d:::::::::ddd::::d
+//  rrrrrrr                eeeeeeeeeeeeee  aaaaaaaaaa  aaaa  ddddddddd   ddddd
+/*int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+{
+    int i,tempFH;
+    char* temp;
+    int retstat = 0;
+    char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
+    FILE* fileToOpen = fopen(fpath,"r+");
+    
+    char * tempBuf = malloc(sizeof(char)*10);
 
-/** Read data from an open file
- *
- * Read should return exactly the number of bytes requested except
- * on EOF or error, otherwise the rest of the data will be
- * substituted with zeroes.  An exception to this is when the
- * 'direct_io' mount option is specified, in which case the return
- * value of the read system call will reflect the return value of
- * this operation.
- *
- * Changed in version 2.2
- */
-// I don't fully understand the documentation above -- it doesn't
-// match the documentation for the read() system call which says it
-// can return with anything up to the amount of data requested. nor
-// with the fusexmp code which returns the amount of data also
-// returned by read.
+    //buf = tempBuf;
+    log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
+        fpath, buf, size, offset, fi);
+
+    bb_fullpath(fpath, "/.Storage/temp");
+    FILE* tempFile = fopen(fpath,"wb+");
+    fclose ( tempFile);
+    temp = readFile(BB_DATA->hiddendir, size, offset, fileToOpen, BASE);
+    //log_msg("\n readfile RETURNED>>%s<<\n",temp);
+    fwrite("1234567890", sizeof(char), 10, tempFile);
+    fflush(tempFile);
+    fclose(tempFile);
+    //free ( temp );
+
+    tempFH = open(fpath, O_RDONLY);
+
+    //log_msg("\nbuf->%s<-\n",temp);
+    log_msg("\nBB_READ RETURNED\n");
+    //return size;
+    return log_syscall("pread", pread(tempFH, buf, 10, offset), 0);
+}*/
+
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
+    char fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
     
+    FILE *tempFileToRead;
+    FILE *fileIDs;
+
+    char *fileData;
+    char tempFilePath[PATH_MAX]; 
+
+    int sizeOfIDs;
+    int dataSize;
+    int bytesRead;
+    int tempFD;
+    int removeResult;
+
+    fileIDs = fopen(fpath,"r+");
+
+    fseek (fileIDs, 0, SEEK_END);             //find the EOF offset
+    sizeOfIDs = ftell( fileIDs );
+    fseek (fileIDs, 0, SEEK_SET);
+    
+    log_msg("\nSize of IDs = %d\n", sizeOfIDs); 
     log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-	    path, buf, size, offset, fi);
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
+        path, buf, size, offset, fi);
 
-    return log_syscall("pread", pread(fi->fh, buf, size, offset), 0);
-}
-
-/** Write data to an open file
- *
- * Write should return exactly the number of bytes requested
- * except on error.  An exception to this is when the 'direct_io'
- * mount option is specified (see read operation).
- *
- * Changed in version 2.2
- */
-// As  with read(), the documentation above is inconsistent with the
-// documentation for the write() system call.
-int bb_write(const char *path, const char *buf, size_t size, off_t offset,
-	     struct fuse_file_info *fi)
-{
-
-	FILE *hash_file;
-	char [100] hashLedger_path;
-
-    int retstat = 0;
+    fileData = readFile(BB_DATA->hiddendir, sizeOfIDs, offset, fileIDs, BASE, fpath);
     
-    log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-	    path, buf, size, offset, fi
-	    );
-    // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
+    if (fileData == NULL) 
+    {
+        log_msg("\nNULL! <--> No blocks found for this file!\n" );
+        bytesRead = log_syscall("pread", pread(fi->fh, buf, size, offset), 0);
+    }
+    else 
+    {
+        dataSize = strlen(fileData);
+        log_msg("\nSize = %d, Data: %s\n", dataSize, fileData);
 
-    sprintf( hashLedger_path, hashLedger, path );
-    hash_file = fopen (hashLedger_path, "r+" );
+        sprintf ( tempFilePath, "%s/temp\n", BB_DATA->hiddendir);
+        tempFileToRead = fopen(tempFilePath, "w+");
 
-    write_buf( buf, hash_file, file )
+        tempFD = fileno(tempFileToRead);
 
+        fwrite ( fileData, sizeof(char), dataSize, tempFileToRead );
+        rewind(tempFileToRead);
+        fflush(tempFileToRead);
 
-    return log_syscall("pwrite", pwrite(fi->fh, buf, size, offset), 0);
+        log_msg("\ntempFD = %d, pathname = %s, PATH_MAX = %d\n", tempFD, tempFilePath, PATH_MAX);
+
+        bytesRead =  log_syscall("pread", pread(tempFD, buf, size, offset), 0);
+        
+        fclose(tempFileToRead);
+
+        removeResult = remove(tempFilePath);
+        log_msg("\nremove() returned %d\n", removeResult);
+
+    }
+    
+
+    log_msg("\nBB_READ RETURNED\n----------\n");
+    fclose(fileIDs);
+
+    return bytesRead;
 }
 
-/** Get file system statistics
- *
- * The 'f_frsize', 'f_favail', 'f_fsid' and 'f_flag' fields are ignored
- *
- * Replaced 'struct statfs' parameter with 'struct statvfs' in
- * version 2.5
- */
+//                                                               iiii          tttt                              
+//                                                              i::::i      ttt:::t                              
+//                                                               iiii       t:::::t                              
+//                                                                          t:::::t                              
+// wwwwwww           wwwww           wwwwwwwrrrrr   rrrrrrrrr  iiiiiiittttttt:::::ttttttt        eeeeeeeeeeee    
+//  w:::::w         w:::::w         w:::::w r::::rrr:::::::::r i:::::it:::::::::::::::::t      ee::::::::::::ee  
+//   w:::::w       w:::::::w       w:::::w  r:::::::::::::::::r i::::it:::::::::::::::::t     e::::::eeeee:::::ee
+//    w:::::w     w:::::::::w     w:::::w   rr::::::rrrrr::::::ri::::itttttt:::::::tttttt    e::::::e     e:::::e
+//     w:::::w   w:::::w:::::w   w:::::w     r:::::r     r:::::ri::::i      t:::::t          e:::::::eeeee::::::e
+//      w:::::w w:::::w w:::::w w:::::w      r:::::r     rrrrrrri::::i      t:::::t          e:::::::::::::::::e 
+//       w:::::w:::::w   w:::::w:::::w       r:::::r            i::::i      t:::::t          e::::::eeeeeeeeeee  
+//        w:::::::::w     w:::::::::w        r:::::r            i::::i      t:::::t    tttttte:::::::e           
+//         w:::::::w       w:::::::w         r:::::r           i::::::i     t::::::tttt:::::te::::::::e          
+//          w:::::w         w:::::w          r:::::r           i::::::i     tt::::::::::::::t e::::::::eeeeeeee  
+//           w:::w           w:::w           r:::::r           i::::::i       tt:::::::::::tt  ee:::::::::::::e  
+//            www             www            rrrrrrr           iiiiiiii         ttttttttttt      eeeeeeeeeeeeee  
+int bb_write(const char *path, const char *buf, size_t size, off_t offset,struct fuse_file_info *fi)
+{   
+    int retstat = 0;
+    char *fpath[PATH_MAX];
+    bb_fullpath(fpath, path);
+    char* compressedBuf;
+    char* IDsToRemove;
+    int compressedOffset=0;
+    int compressedSize=9;
+    int i;
+    
+    log_msg("\nbb_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",path, buf, size, offset, fi);
+
+    //###################################OUR LINES###########################################//
+    log_msg("||buf=->%s<-, size=%d, offset=%lld||\n", buf, size, offset);                    
+
+    IDsToRemove = getOverwrittenBlocks(fpath, size, offset, BASE);
+    removeBlocks( IDsToRemove, BB_DATA->hashLedger, BB_DATA->hiddendir);
+    log_msg("...IDs to remove=->%s<-...\n", IDsToRemove);
+
+    compressedBuf    = compressBuffer(buf, BB_DATA->hashLedger, BB_DATA->hiddendir, size, BASE);
+    compressedOffset = getNewOffset(offset, BASE);
+    compressedSize   = getSize(compressedBuf);
+    //compressdBuf's form is XXX\nYYY\nZZZ\n..... with the appropriate IDs
+    //####################################################################################//
+    retstat = pwrite(fi->fh, compressedBuf, compressedSize, compressedOffset);
+
+    return size;
+}
+
 int bb_statfs(const char *path, struct statvfs *statv)
 {
     int retstat = 0;
@@ -571,72 +494,22 @@ int bb_statfs(const char *path, struct statvfs *statv)
     
     return retstat;
 }
-
-/** Possibly flush cached data
- *
- * BIG NOTE: This is not equivalent to fsync().  It's not a
- * request to sync dirty data.
- *
- * Flush is called on each close() of a file descriptor.  So if a
- * filesystem wants to return write errors in close() and the file
- * has cached dirty data, this is a good place to write back data
- * and return any errors.  Since many applications ignore close()
- * errors this is not always useful.
- *
- * NOTE: The flush() method may be called more than once for each
- * open().  This happens if more than one file descriptor refers
- * to an opened file due to dup(), dup2() or fork() calls.  It is
- * not possible to determine if a flush is final, so each flush
- * should be treated equally.  Multiple write-flush sequences are
- * relatively rare, so this shouldn't be a problem.
- *
- * Filesystems shouldn't assume that flush will always be called
- * after some writes, or that if will be called at all.
- *
- * Changed in version 2.2
- */
-// this is a no-op in BBFS.  It just logs the call and returns success
 int bb_flush(const char *path, struct fuse_file_info *fi)
 {
-    log_msg("\nbb_flush(path=\"%s\", fi=0x%08x)\n", path, fi);
+    log_msg("\nbb_flush(path=\"%s\", fi=0x%08x)\n----------\n", path, fi);
     // no need to get fpath on this one, since I work from fi->fh not the path
-    log_fi(fi);
-	
+    //log_fi(fi);
     return 0;
 }
-
-/** Release an open file
- *
- * Release is called when there are no more references to an open
- * file: all file descriptors are closed and all memory mappings
- * are unmapped.
- *
- * For every open() call there will be exactly one release() call
- * with the same flags and file descriptor.  It is possible to
- * have a file opened more than once, in which case only the last
- * release will mean, that no more reads/writes will happen on the
- * file.  The return value of release is ignored.
- *
- * Changed in version 2.2
- */
 int bb_release(const char *path, struct fuse_file_info *fi)
 {
-    log_msg("\nbb_release(path=\"%s\", fi=0x%08x)\n",
-	  path, fi);
-    log_fi(fi);
+    log_msg("\nbb_release(path=\"%s\", fi=0x%08x)\n----------\n",path, fi);
+    //log_fi(fi);
 
     // We need to close the file.  Had we allocated any resources
     // (buffers etc) we'd need to free them here as well.
     return log_syscall("close", close(fi->fh), 0);
 }
-
-/** Synchronize file contents
- *
- * If the datasync parameter is non-zero, then only the user data
- * should be flushed, not the meta data.
- *
- * Changed in version 2.2
- */
 int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 {
     log_msg("\nbb_fsync(path=\"%s\", datasync=%d, fi=0x%08x)\n",
@@ -654,13 +527,13 @@ int bb_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 
 #ifdef HAVE_SYS_XATTR_H
 /** Note that my implementations of the various xattr functions use
-    the 'l-' versions of the functions (eg bb_setxattr() calls
-    lsetxattr() not setxattr(), etc).  This is because it appears any
-    symbolic links are resolved before the actual call takes place, so
-    I only need to use the system-provided calls that don't follow
-    them */
+the 'l-' versions of the functions (eg bb_setxattr() calls
+lsetxattr() not setxattr(), etc).  This is because it appears any
+symbolic links are resolved before the actual call takes place, so
+I only need to use the system-provided calls that don't follow
+them 
+*/
 
-/** Set extended attributes */
 int bb_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
 {
     char fpath[PATH_MAX];
@@ -671,8 +544,6 @@ int bb_setxattr(const char *path, const char *name, const char *value, size_t si
 
     return log_syscall("lsetxattr", lsetxattr(fpath, name, value, size, flags), 0);
 }
-
-/** Get extended attributes */
 int bb_getxattr(const char *path, const char *name, char *value, size_t size)
 {
     int retstat = 0;
@@ -688,8 +559,6 @@ int bb_getxattr(const char *path, const char *name, char *value, size_t size)
     
     return retstat;
 }
-
-/** List extended attributes */
 int bb_listxattr(const char *path, char *list, size_t size)
 {
     int retstat = 0;
@@ -713,8 +582,6 @@ int bb_listxattr(const char *path, char *list, size_t size)
     
     return retstat;
 }
-
-/** Remove extended attributes */
 int bb_removexattr(const char *path, const char *name)
 {
     char fpath[PATH_MAX];
@@ -740,7 +607,7 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     char fpath[PATH_MAX];
     
-    log_msg("\nbb_opendir(path=\"%s\", fi=0x%08x)\n",
+    log_msg("\nbb_opendir(path=\"%s\", fi=0x%08x)\n----------\n",
 	  path, fi);
     bb_fullpath(fpath, path);
 
@@ -753,41 +620,18 @@ int bb_opendir(const char *path, struct fuse_file_info *fi)
     
     fi->fh = (intptr_t) dp;
     
-    log_fi(fi);
+    //log_fi(fi);
     
     return retstat;
 }
 
-/** Read directory
- *
- * This supersedes the old getdir() interface.  New applications
- * should use this.
- *
- * The filesystem may choose between two modes of operation:
- *
- * 1) The readdir implementation ignores the offset parameter, and
- * passes zero to the filler function's offset.  The filler
- * function will not return '1' (unless an error happens), so the
- * whole directory is read in a single readdir operation.  This
- * works just like the old getdir() method.
- *
- * 2) The readdir implementation keeps track of the offsets of the
- * directory entries.  It uses the offset parameter and always
- * passes non-zero offset to the filler function.  When the buffer
- * is full (or an error happens) the filler function will return
- * '1'.
- *
- * Introduced in version 2.3
- */
-
-int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
-	       struct fuse_file_info *fi)
+int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,struct fuse_file_info *fi)
 {
     int retstat = 0;
     DIR *dp;
     struct dirent *de;
     
-    log_msg("\nbb_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",
+    log_msg("\nbb_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n----------\n",
 	    path, buf, filler, offset, fi);
     // once again, no need for fullpath -- but note that I need to cast fi->fh
     dp = (DIR *) (uintptr_t) fi->fh;
@@ -799,8 +643,8 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     de = readdir(dp);
     log_msg("    readdir returned 0x%p\n", de);
     if (de == 0) {
-	retstat = log_error("bb_readdir readdir");
-	return retstat;
+    	retstat = log_error("bb_readdir readdir");
+    	return retstat;
     }
 
     // This will copy the entire directory into the buffer.  The loop exits
@@ -808,14 +652,14 @@ int bb_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     // returns something non-zero.  The first case just means I've
     // read the whole directory; the second means the buffer is full.
     do {
-	log_msg("calling filler with name %s\n", de->d_name);
-	if (filler(buf, de->d_name, NULL, 0) != 0) {
-	    log_msg("    ERROR bb_readdir filler:  buffer full");
-	    return -ENOMEM;
-	}
+    	log_msg("calling filler with name %s\n", de->d_name);
+    	if (filler(buf, de->d_name, NULL, 0) != 0) {
+    	    log_msg("    ERROR bb_readdir filler:  buffer full");
+    	    return -ENOMEM;
+    	}
     } while ((de = readdir(dp)) != NULL);
     
-    log_fi(fi);
+    //log_fi(fi);
     
     return retstat;
 }
@@ -828,24 +672,15 @@ int bb_releasedir(const char *path, struct fuse_file_info *fi)
 {
     int retstat = 0;
     
-    log_msg("\nbb_releasedir(path=\"%s\", fi=0x%08x)\n",
+    log_msg("\nbb_releasedir(path=\"%s\", fi=0x%08x)\n----------\n",
 	    path, fi);
-    log_fi(fi);
+    //log_fi(fi);
     
     closedir((DIR *) (uintptr_t) fi->fh);
     
     return retstat;
 }
 
-/** Synchronize directory contents
- *
- * If the datasync parameter is non-zero, then only the user data
- * should be flushed, not the meta data
- *
- * Introduced in version 2.3
- */
-// when exactly is this called?  when a user calls fsync and it
-// happens to be a directory? ??? >>> I need to implement this...
 int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 {
     int retstat = 0;
@@ -856,58 +691,40 @@ int bb_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
     
     return retstat;
 }
-
-/**
- * Initialize filesystem
- *
- * The return value will passed in the private_data field of
- * fuse_context to all file operations and as a parameter to the
- * destroy() method.
- *
- * Introduced in version 2.3
- * Changed in version 2.6
- */
-// Undocumented but extraordinarily useful fact:  the fuse_context is
-// set up before this function is called, and
-// fuse_get_context()->private_data returns the user_data passed to
-// fuse_main().  Really seems like either it should be a third
-// parameter coming in here, or else the fact should be documented
-// (and this might as well return void, as it did in older versions of
-// FUSE).
+//   iiii                            tttt            iiii  
+//  i::::i                        ttt:::t           i::::i 
+//   iiii                         t:::::t            iiii  
+//                                t:::::t                  
+// iiiiiiinnnn  nnnnnnnn    ttttttt:::::ttttttt    iiiiiii 
+// i:::::in:::nn::::::::nn  t:::::::::::::::::t    i:::::i 
+//  i::::in::::::::::::::nn t:::::::::::::::::t     i::::i 
+//  i::::inn:::::::::::::::ntttttt:::::::tttttt     i::::i 
+//  i::::i  n:::::nnnn:::::n      t:::::t           i::::i 
+//  i::::i  n::::n    n::::n      t:::::t           i::::i 
+//  i::::i  n::::n    n::::n      t:::::t           i::::i 
+//  i::::i  n::::n    n::::n      t:::::t    tttttt i::::i 
+// i::::::i n::::n    n::::n      t::::::tttt:::::ti::::::i
+// i::::::i n::::n    n::::n      tt::::::::::::::ti::::::i
+// i::::::i n::::n    n::::n        tt:::::::::::tti::::::i
+// iiiiiiii nnnnnn    nnnnnn          ttttttttttt  iiiiiiii
 void *bb_init(struct fuse_conn_info *conn)
 {
+    //initialize the hash_ledger
+    char str_to_hash_file[] = "001, 00000000000000000000, 00\n";
+    fwrite ( str_to_hash_file, 30 ,1 , BB_DATA->hashLedger );
+    fflush(BB_DATA->hashLedger);
 
     log_msg("\nbb_init()\n");
-
+    
     log_conn(conn);
     log_fuse_context(fuse_get_context());
-  
+    
     return BB_DATA;
 }
-
-/**
- * Clean up filesystem
- *
- * Called on filesystem exit.
- *
- * Introduced in version 2.3
- */
 void bb_destroy(void *userdata)
 {
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
-
-/**
- * Check file access permissions
- *
- * This will be called for the access() system call.  If the
- * 'default_permissions' mount option is given, this method is not
- * called.
- *
- * This method is not called under Linux kernel versions 2.4.x
- *
- * Introduced in version 2.5
- */
 int bb_access(const char *path, int mask)
 {
     int retstat = 0;
@@ -925,33 +742,6 @@ int bb_access(const char *path, int mask)
     return retstat;
 }
 
-/**
- * Create and open a file
- *
- * If the file does not exist, first create it with the specified
- * mode, and then open it.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the mknod() and open() methods
- * will be called instead.
- *
- * Introduced in version 2.5
- */
-// Not implemented.  I had a version that used creat() to create and
-// open the file, which it turned out opened the file write-only.
-
-/**
- * Change the size of an open file
- *
- * This method is called instead of the truncate() method if the
- * truncation was invoked from an ftruncate() system call.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the truncate() method will be
- * called instead.
- *
- * Introduced in version 2.5
- */
 int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
@@ -966,19 +756,6 @@ int bb_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
     
     return retstat;
 }
-
-/**
- * Get attributes from an open file
- *
- * This method is called instead of the getattr() method if the
- * file information is available.
- *
- * Currently this is only called after the create() method if that
- * is implemented (see above).  Later it may be called for
- * invocations of fstat() too.
- *
- * Introduced in version 2.5
- */
 int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
     int retstat = 0;
@@ -987,10 +764,6 @@ int bb_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *f
 	    path, statbuf, fi);
     log_fi(fi);
 
-    // On FreeBSD, trying to do anything with the mountpoint ends up
-    // opening it, and then using the FD for an fgetattr.  So in the
-    // special case of a path of "/", I need to do a getattr on the
-    // underlying root directory instead of doing the fgetattr().
     if (!strcmp(path, "/"))
 	return bb_getattr(path, statbuf);
     
@@ -1051,44 +824,45 @@ void bb_usage()
     fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
     abort();
 }
-
+//                                             iiii                   
+//                                            i::::i                  
+//                                             iiii                   
+                                                                   
+//    mmmmmmm    mmmmmmm     aaaaaaaaaaaaa   iiiiiiinnnn  nnnnnnnn    
+//  mm:::::::m  m:::::::mm   a::::::::::::a  i:::::in:::nn::::::::nn  
+// m::::::::::mm::::::::::m  aaaaaaaaa:::::a  i::::in::::::::::::::nn 
+// m::::::::::::::::::::::m           a::::a  i::::inn:::::::::::::::n
+// m:::::mmm::::::mmm:::::m    aaaaaaa:::::a  i::::i  n:::::nnnn:::::n
+// m::::m   m::::m   m::::m  aa::::::::::::a  i::::i  n::::n    n::::n
+// m::::m   m::::m   m::::m a::::aaaa::::::a  i::::i  n::::n    n::::n
+// m::::m   m::::m   m::::ma::::a    a:::::a  i::::i  n::::n    n::::n
+// m::::m   m::::m   m::::ma::::a    a:::::a i::::::i n::::n    n::::n
+// m::::m   m::::m   m::::ma:::::aaaa::::::a i::::::i n::::n    n::::n
+// m::::m   m::::m   m::::m a::::::::::aa:::ai::::::i n::::n    n::::n
+// mmmmmm   mmmmmm   mmmmmm  aaaaaaaaaa  aaaaiiiiiiii nnnnnn    nnnnnn
 int main(int argc, char *argv[])
 {
     int fuse_stat;
     struct bb_state *bb_data;
 
     FILE *hash_file;
-	char str_to_hash_file [] = "01, 00000000000000000000, 00\n"; // size of string is 28 bytes without '\0' //
+    //char str_to_hash_file[] = "001, 00000000000000000000, 00\n"; // size of string is 27 bytes without "\0" //
 
-    // bbfs doesn't do any access checking on its own (the comment
-    // blocks in fuse.h mention some of the functions that need
-    // accesses checked -- but note there are other functions, like
-    // chown(), that also need checking!).  Since running bbfs as root
-    // will therefore open Metrodome-sized holes in the system
-    // security, we'll check if root is trying to mount the filesystem
-    // and refuse if it is.  The somewhat smaller hole of an ordinary
-    // user doing it with the allow_other flag is still there because
-    // I don't want to parse the options string.
     if ((getuid() == 0) || (geteuid() == 0)) {
-    	fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
-    	return 1;
+        fprintf(stderr, "Running BBFS as root opens unnacceptable security holes\n");
+        return 1;
     }
 
     // See which version of fuse we're running
     fprintf(stderr, "Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
     
-    // Perform some sanity checking on the command line:  make sure
-    // there are enough arguments, and that neither of the last two
-    // start with a hyphen (this will break if you actually have a
-    // rootpoint or mountpoint whose name starts with a hyphen, but so
-    // will a zillion other programs)
     if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
-	bb_usage();
+    bb_usage();
 
     bb_data = malloc(sizeof(struct bb_state));
     if (bb_data == NULL) {
-	perror("main calloc");
-	abort();
+    perror("main calloc");
+    abort();
     }
 
     // Pull the rootdir out of the argument list and save it in my
@@ -1099,11 +873,17 @@ int main(int argc, char *argv[])
     argc--;
     
     bb_data->logfile = log_open();
+    
+    //#############################ADDED LINES###################################//
+    //mkdir("rootdir/.Storage",0700);
 
-    hash_file = fopen("rootdir/hash.txt","wb+");
-    fwrite ( str_to_hash_file, 28, 1, hash_file );
-    fflush(hash_file);
-    fclose ( hash_file );
+    mkdir(".Storage",0700);
+    //hash_file = fopen("rootdir/hash_ledger","wb+");
+    hash_file = fopen(".Storage/hash_ledger","wb+");
+    
+    bb_data->hashLedger = hash_file;
+    bb_data->hiddendir = realpath(".Storage", NULL);
+    //###########################################################################//
     
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
