@@ -20,9 +20,9 @@
 #endif
 
 #include "log.h"
-#include "test_lib.h"
+#include "our_lib.h"
 
-#define BASE 4096
+#define BASE 5
 
 static void bb_fullpath(char fpath[PATH_MAX], const char *path)
 {
@@ -332,39 +332,6 @@ int bb_open(const char *path, struct fuse_file_info *fi)
 //  r:::::r             e::::::::eeeeeeeea:::::aaaa::::::a d:::::::::::::::::d
 //  r:::::r              ee:::::::::::::e a::::::::::aa:::a d:::::::::ddd::::d
 //  rrrrrrr                eeeeeeeeeeeeee  aaaaaaaaaa  aaaa  ddddddddd   ddddd
-/*int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
-{
-    int i,tempFH;
-    char* temp;
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    bb_fullpath(fpath, path);
-    FILE* fileToOpen = fopen(fpath,"r+");
-    
-    char * tempBuf = malloc(sizeof(char)*10);
-
-    //buf = tempBuf;
-    log_msg("\nbb_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
-        fpath, buf, size, offset, fi);
-
-    bb_fullpath(fpath, "/.Storage/temp");
-    FILE* tempFile = fopen(fpath,"wb+");
-    fclose ( tempFile);
-    temp = readFile(BB_DATA->hiddendir, size, offset, fileToOpen, BASE);
-    //log_msg("\n readfile RETURNED>>%s<<\n",temp);
-    fwrite("1234567890", sizeof(char), 10, tempFile);
-    fflush(tempFile);
-    fclose(tempFile);
-    //free ( temp );
-
-    tempFH = open(fpath, O_RDONLY);
-
-    //log_msg("\nbuf->%s<-\n",temp);
-    log_msg("\nBB_READ RETURNED\n");
-    //return size;
-    return log_syscall("pread", pread(tempFH, buf, 10, offset), 0);
-}*/
-
 int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     int retstat = 0;
@@ -413,8 +380,6 @@ int bb_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_
         fwrite ( fileData, sizeof(char), dataSize, tempFileToRead );
         rewind(tempFileToRead);
         fflush(tempFileToRead);
-
-        log_msg("\ntempFD = %d, pathname = %s, PATH_MAX = %d\n", tempFD, tempFilePath, PATH_MAX);
 
         bytesRead =  log_syscall("pread", pread(tempFD, buf, size, offset), 0);
         
@@ -468,7 +433,7 @@ int bb_write(const char *path, const char *buf, size_t size, off_t offset,struct
     removeBlocks( IDsToRemove, BB_DATA->hashLedger, BB_DATA->hiddendir);
     log_msg("...IDs to remove=->%s<-...\n", IDsToRemove);
 
-    compressedBuf    = compressBuffer(buf, BB_DATA->hashLedger, BB_DATA->hiddendir, size, BASE);
+    compressedBuf    = compressBuffer(buf, size, BB_DATA->hashLedger, BB_DATA->hiddendir, BASE);
     compressedOffset = getNewOffset(offset, BASE);
     compressedSize   = getSize(compressedBuf);
     //compressdBuf's form is XXX\nYYY\nZZZ\n..... with the appropriate IDs
@@ -723,6 +688,7 @@ void *bb_init(struct fuse_conn_info *conn)
 }
 void bb_destroy(void *userdata)
 {
+    
     log_msg("\nbb_destroy(userdata=0x%08x)\n", userdata);
 }
 int bb_access(const char *path, int mask)
@@ -880,6 +846,8 @@ int main(int argc, char *argv[])
     mkdir(".Storage",0700);
     //hash_file = fopen("rootdir/hash_ledger","wb+");
     hash_file = fopen(".Storage/hash_ledger","wb+");
+
+    if( fopen(".Storage/Diagnostics.txt","wb+") == NULL ) return -1;
     
     bb_data->hashLedger = hash_file;
     bb_data->hiddendir = realpath(".Storage", NULL);
