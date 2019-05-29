@@ -209,11 +209,11 @@ char* compressBuffer(char* buf, FILE* hash_file, char* dirPath, int size, int ba
     int i,j,num_id;
 
     //included lines for diagnostics reasons
-    FILE * diagn_fd = fopen("/home/ttsiapras/Desktop/Diagnostics.txt","r+");
-    fseek(diagn_fd, 0, SEEK_END);
-    fprintf(diagn_fd, "------------\\/------------\n");                             //diagnostics
-    fprintf(diagn_fd, "--------------------------\n");                             //diagnostics
-    fprintf(diagn_fd, "In compressBuffer\n\n");                                      //diagnostics
+    /*DIAG*/FILE * diagn_fd = fopen("/home/ttsiapras/Desktop/Diagnostics.txt","r+");
+    /*DIAG*/fseek(diagn_fd, 0, SEEK_END);
+    /*DIAG*/fprintf(diagn_fd, "------------\\/------------\n");                             
+    /*DIAG*/fprintf(diagn_fd, "--------------------------\n");                             
+    /*DIAG*/fprintf(diagn_fd, "In compressBuffer\n\n");                                      
 
     
     nofBlocks = size/ base;
@@ -244,12 +244,12 @@ char* compressBuffer(char* buf, FILE* hash_file, char* dirPath, int size, int ba
         strcat(output,char_id);
     }
 
-    fprintf(diagn_fd, "!!!\n");
-    fprintf(diagn_fd, output);
-    fprintf(diagn_fd, "!!!\n\n");
-    fprintf(diagn_fd, "Out compressBuffer\n");
-    fprintf(diagn_fd, "--------------------------\n");
-    fclose(diagn_fd);
+    /*DIAG*/fprintf(diagn_fd, "!!!\n");
+    /*DIAG*/fprintf(diagn_fd, output);
+    /*DIAG*/fprintf(diagn_fd, "!!!\n\n");
+    /*DIAG*/fprintf(diagn_fd, "Out compressBuffer\n");
+    /*DIAG*/fprintf(diagn_fd, "--------------------------\n");
+    /*DIAG*/fclose(diagn_fd);
 
     return(output);
 }
@@ -403,7 +403,7 @@ int removeBlocks( char* input, FILE *hash_file,char* dirPath ){
     
         
         fseek ( hash_file, 27, SEEK_CUR );
-        fread ( counter_char, sizeof(char), 2, hash_file );// Get counter's value //
+        fread ( counter_char, sizeof(char), 2, hash_file ); // Get counter's value //
         counter_char[2] = '\0';
         counter = atoi ( counter_char );
     
