@@ -8,7 +8,7 @@ int getSize( char* input );
 int addHash( FILE *hash_file, int hash_file_size, char *new_hash,FILE * diagn_fd );
 
 /* Creates the hidden file that contains the actual Block data */
-void create_block( char* block, int id,char* dirPath ,FILE * diagn_fd );
+void createBlock( char* block, int id,char* dirPath ,FILE * diagn_fd );
 
 /* Tries to find the hash and in case of failure creates the block */
 int compareHash( int *isNewBlock, FILE *hash_file, char* in_hash,FILE * diagn_fd );
@@ -22,16 +22,13 @@ int PushBlock( char* block,FILE *hash_file,char* dirPath, FILE * diagn_fd );
 
 /* Takes an Array of bytes, breaks it into block sized segments */
 /* and callsthe PushBlock for each of the segments              */
-char* compressBuffer(char* buf, int size, FILE* hash_file, char* dirPath, int base );
+char* compressBuffer(const char* buf, int size, FILE* hash_file, char* dirPath, int base );
 
 /* Returns the contents of the block specified by the ID given */
 char *readBlock( char *dirPath, int id, int base, FILE * diagn_fd );
 
 /* Returns the reconstructed file */
 char *readFile( char *dirPath, size_t size, off_t offset, FILE *file, int base, char* fpath );
-
-/* Reads o compressed File and returns the Nof block it contains */
-int getNOFblocks( char* path, int sizeOfID );
 
 /* Returns the IDs of the blocks thst got overwritten in order to be removed */
 char* getOverwrittenBlocks( char* path, int size, int offset, int base );
